@@ -1,0 +1,853 @@
+<!-- Chosen Palette: Warm Neutrals & Earth Tones (Stone/Amber/Orange) - Evoking a sense of calm exploration and golden hour photography. -->
+<!-- Application Structure Plan:
+    1.  **Dashboard Overview:** A high-level summary of the trip stats.
+    2.  **Interactive Timeline (The Core):** Tab-based navigation for Day 1 - Day 11.
+    3.  **Photography Command Center:** Checklists for Reels/Shorts and Photo Spots.
+    4.  **Logistics & Loot:** Shopping, dining, and accommodation lists.
+    5.  **Gemini AI Integration:**
+        * Feature A: Daily "Smart Tips" button in the itinerary card.
+        * Feature B: "Photo Guide" button in the photo mission list.
+    6.  **Daily Routine Checklist:** Added per user request (Running, Snacks, Beer, Fuji Cake).
+-->
+
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>東京 & 富士山 11天10夜 獨旅攝影指揮中心 (AI Powered)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Markdown Parser for AI responses -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap');
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #f5f5f4; /* stone-100 */
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px;
+            max-height: 400px;
+        }
+        .active-tab {
+            background-color: #d97706; /* amber-600 */
+            color: white;
+            border-color: #d97706;
+        }
+        .inactive-tab {
+            background-color: white;
+            color: #44403c; /* stone-700 */
+            border-color: #e7e5e4; /* stone-200 */
+        }
+        .inactive-tab:hover {
+            background-color: #fef3c7; /* amber-100 */
+        }
+        /* Custom scrollbar for horizontal tabs */
+        .hide-scroll::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scroll {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        /* AI Modal Markdown Styles */
+        .prose h3 { font-size: 1.1em; font-weight: bold; margin-top: 1em; margin-bottom: 0.5em; color: #d97706; }
+        .prose ul { list-style-type: disc; padding-left: 1.2em; margin-bottom: 1em; }
+        .prose li { margin-bottom: 0.3em; }
+        .prose strong { color: #44403c; }
+        
+        /* Loading Animation */
+        .sparkle-loading {
+            display: inline-block;
+            animation: pulse-sparkle 1.5s infinite;
+        }
+        @keyframes pulse-sparkle {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.2); opacity: 0.7; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+    </style>
+</head>
+<body class="text-stone-800">
+
+    <!-- Main Container -->
+    <div class="max-w-6xl mx-auto px-4 py-8 min-h-screen flex flex-col gap-8 relative">
+
+        <!-- Header -->
+        <header class="text-center space-y-2">
+            <h1 class="text-3xl md:text-4xl font-bold text-stone-900 tracking-tight">🇯🇵 東京 & 富士山 獨旅攝影計畫</h1>
+            <p class="text-stone-500 font-medium">2025/01/01 - 2025/01/11 (11天10夜) • AI 隨身助理版</p>
+            <div class="flex justify-center gap-4 text-sm mt-4">
+                <span class="px-3 py-1 bg-amber-100 text-amber-800 rounded-full">📸 攝影優先</span>
+                <span class="px-3 py-1 bg-blue-100 text-blue-800 rounded-full">🗻 富士山絕景</span>
+                <span class="px-3 py-1 bg-purple-100 text-purple-800 rounded-full">✨ Gemini AI 賦能</span>
+            </div>
+        </header>
+
+        <!-- Dashboard / Overview Section -->
+        <section class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- Intro Text -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-stone-200 flex flex-col justify-center">
+                <h2 class="text-xl font-bold mb-4 text-amber-700">📋 行程總覽</h2>
+                <p class="mb-4 text-stone-600 leading-relaxed">
+                    歡迎來到您的旅行指揮中心。本行程專為攝影愛好者設計，涵蓋東京的現代與下町風情，以及河口湖的富士山絕景。
+                    重點包含 <span class="font-bold text-stone-800">1/5 中山金杯賽馬</span>、<span class="font-bold text-stone-800">Shibuya Sky 夕陽</span> 與 <span class="font-bold text-stone-800">逆富士</span> 拍攝。
+                </p>
+                <div class="grid grid-cols-2 gap-4 mt-auto">
+                    <div class="bg-stone-50 p-4 rounded-lg text-center">
+                        <div class="text-2xl font-bold text-stone-800">6晚</div>
+                        <div class="text-xs text-stone-500 uppercase">秋葉原住宿</div>
+                    </div>
+                    <div class="bg-stone-50 p-4 rounded-lg text-center">
+                        <div class="text-2xl font-bold text-stone-800">3晚</div>
+                        <div class="text-xs text-stone-500 uppercase">河口湖住宿</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chart: Trip Focus -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
+                <h2 class="text-xl font-bold mb-4 text-amber-700">🎯 行程重心分析</h2>
+                <div class="chart-container">
+                    <canvas id="focusChart"></canvas>
+                </div>
+                <p class="text-xs text-center text-stone-400 mt-2">攝影與探索佔比最高，購物集中於特定時段。</p>
+            </div>
+        </section>
+
+        <!-- Navigation Tabs (Main Controller) -->
+        <nav class="sticky top-2 z-40 bg-stone-100/90 backdrop-blur-sm py-2 rounded-xl border border-stone-200 shadow-md">
+            <div class="flex overflow-x-auto gap-2 px-2 hide-scroll" id="dayTabs">
+                <!-- JS will populate these buttons -->
+            </div>
+        </nav>
+
+        <!-- Dynamic Content Section -->
+        <main id="mainContent" class="min-h-[500px]">
+            <!-- Content injected by JS -->
+        </main>
+
+        <!-- Secondary Charts Section -->
+        <section class="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
+            <h2 class="text-xl font-bold mb-2 text-stone-800">⚡ 每日體力消耗預估</h2>
+            <p class="text-sm text-stone-500 mb-6">點擊下方圖表可直接跳轉至該日行程。</p>
+            <div class="chart-container">
+                <canvas id="intensityChart"></canvas>
+            </div>
+        </section>
+
+        <!-- Photo Missions & Shopping Section -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            
+            <!-- Photo Missions -->
+            <section class="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
+                <div class="flex items-center justify-between mb-6">
+                    <h2 class="text-xl font-bold text-stone-800">🎥 攝影 & Reels 任務</h2>
+                    <span id="photoProgress" class="text-sm font-bold text-amber-600 bg-amber-100 px-3 py-1 rounded-full">0/10 完成</span>
+                </div>
+                <p class="text-sm text-stone-500 mb-4">點擊項目標記完成。點擊「✨ 攻略」獲取 AI 拍攝建議。</p>
+                
+                <div class="space-y-3" id="photoChecklist">
+                    <!-- JS Populated -->
+                </div>
+            </section>
+
+            <!-- Shopping Logistics -->
+            <section class="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
+                <div class="flex items-center justify-between mb-6">
+                    <h2 class="text-xl font-bold text-stone-800">🛍️ 購物 & 伴手禮清單</h2>
+                    <span id="shopProgress" class="text-sm font-bold text-blue-600 bg-blue-100 px-3 py-1 rounded-full">0/12 購入</span>
+                </div>
+                 <p class="text-sm text-stone-500 mb-4">點擊項目以標記為「已購入」。</p>
+                <div class="space-y-3" id="shoppingChecklist">
+                    <!-- JS Populated -->
+                </div>
+            </section>
+        </div>
+
+        <!-- Footer -->
+        <footer class="text-center text-stone-400 text-sm py-8 border-t border-stone-200">
+            <p>2025 Tokyo & Fuji Solo Trip • Photography Itinerary</p>
+            <p class="mt-2 text-xs">Remember to check weather forecasts for Mt. Fuji visibility.</p>
+        </footer>
+
+    </div>
+
+    <!-- AI Modal -->
+    <div id="aiModal" class="fixed inset-0 bg-stone-900/50 z-50 hidden flex items-center justify-center p-4 backdrop-blur-sm transition-opacity duration-300">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col transform transition-all scale-100">
+            <!-- Modal Header -->
+            <div class="p-4 border-b border-stone-100 flex justify-between items-center bg-gradient-to-r from-purple-50 to-amber-50 rounded-t-2xl">
+                <div class="flex items-center gap-2">
+                    <span class="text-xl">✨</span>
+                    <h3 id="aiModalTitle" class="font-bold text-stone-800">Gemini 思考中...</h3>
+                </div>
+                <button onclick="closeModal()" class="text-stone-400 hover:text-stone-600 p-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            
+            <!-- Modal Body -->
+            <div id="aiModalContent" class="p-6 overflow-y-auto prose prose-stone text-sm leading-relaxed text-stone-600">
+                <!-- Content goes here -->
+                <div class="flex flex-col items-center justify-center py-8 space-y-4">
+                    <div class="sparkle-loading text-4xl">✨</div>
+                    <p class="text-stone-400">正在分析行程與攝影數據...</p>
+                </div>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="p-4 border-t border-stone-100 bg-stone-50 rounded-b-2xl text-right">
+                <button onclick="closeModal()" class="px-4 py-2 bg-stone-800 text-white rounded-lg text-sm hover:bg-stone-700 transition-colors">
+                    關閉
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript Logic -->
+    <script>
+        // --- 0. Gemini API Configuration & Logic ---
+        const apiKey = ""; // API Key injected by environment
+
+        async function callGeminiAPI(prompt) {
+            if (!apiKey) {
+                console.error("API Key is missing.");
+                return "錯誤：API Key 未設定。請確認環境變數。";
+            }
+
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            
+            const payload = {
+                contents: [{ parts: [{ text: prompt }] }]
+            };
+
+            const delays = [1000, 2000, 4000, 8000, 16000];
+            
+            for (let i = 0; i < 5; i++) {
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                         if (response.status === 429) {
+                            // Retry on rate limit
+                             throw new Error('Rate limit exceeded');
+                         }
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    return data.candidates?.[0]?.content?.parts?.[0]?.text || "Gemini 沒有回應內容。";
+
+                } catch (error) {
+                    if (i === 4) return "連線錯誤，請稍後再試。\n\n" + error.message;
+                    await new Promise(resolve => setTimeout(resolve, delays[i]));
+                }
+            }
+        }
+
+        // Modal Functions
+        const modal = document.getElementById('aiModal');
+        const modalTitle = document.getElementById('aiModalTitle');
+        const modalContent = document.getElementById('aiModalContent');
+
+        function openModal(title) {
+            modalTitle.innerText = title;
+            modalContent.innerHTML = `
+                <div class="flex flex-col items-center justify-center py-8 space-y-4">
+                    <div class="sparkle-loading text-4xl">✨</div>
+                    <p class="text-stone-400">Gemini 正在為您生成建議...</p>
+                </div>
+            `;
+            modal.classList.remove('hidden');
+        }
+
+        function closeModal() {
+            modal.classList.add('hidden');
+        }
+
+        // Close modal when clicking outside
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeModal();
+        });
+
+        // Feature 1: Get Daily Tips
+        async function getDailyTips(dayData) {
+            openModal(`Day ${dayData.day}：AI 私房建議`);
+            
+            const prompt = `
+                你是一位專業的日本旅遊攝影師與導遊。
+                使用者將在【${dayData.date}】前往【${dayData.location}】。
+                今日行程重點：${dayData.highlights.join(', ')}。
+                行程標籤：${dayData.tag}。
+                
+                請針對這位「獨旅攝影師」，提供 3 個具體且實用的建議。
+                建議方向可包含：
+                1. 攝影：最佳拍攝時段或冷門構圖角度。
+                2. 行程：如何避開人潮或省力的交通建議。
+                3. 美食：附近適合一人用餐的隱藏美食。
+                
+                請用繁體中文回答，格式使用 Markdown，語氣輕鬆專業，並適當使用 emoji。
+            `;
+
+            const result = await callGeminiAPI(prompt);
+            modalContent.innerHTML = marked.parse(result);
+        }
+
+        // Feature 2: Get Photo Guide
+        async function getPhotoGuide(missionText) {
+            openModal('AI 攝影構圖軍師');
+            
+            const prompt = `
+                你是一位專業的攝影導師。使用者想要拍攝以下主題：
+                「${missionText}」
+                
+                請提供一份簡短的拍攝攻略 (Markdown 格式)：
+                1. **推薦焦段**：(例如：廣角 16-35mm 或 長焦 70-200mm)
+                2. **構圖建議**：(例如：三分法、引導線、反射)
+                3. **關鍵設定**：(快門速度、光圈建議，如果是夜景請特別說明)
+                4. **拍攝時機**：(例如：藍調時刻、清晨)
+                
+                請用繁體中文回答，針對單人旅行者給予實用的建議。
+            `;
+
+            const result = await callGeminiAPI(prompt);
+            modalContent.innerHTML = marked.parse(result);
+        }
+
+
+        // --- 1. Data Source (Based on the Report) ---
+        const itineraryData = [
+            {
+                day: 1,
+                date: "1/1 (三)",
+                title: "日本橋・皇居・新宿・銀座",
+                tag: "體力挑戰",
+                intensity: 9,
+                location: "Tokyo",
+                highlights: [
+                    "上午：日本橋麒麟像 (經典地標)",
+                    "上午：皇居前廣場 & 和田倉噴水公園",
+                    "午餐：Shake Shack 銀座",
+                    "下午：須賀神社 (你的名字階梯)",
+                    "下午：東京都廳北展望室 (新宿夕陽)",
+                    "晚上：銀座歌舞伎座夜拍 & 中央通"
+                ],
+                food: "Shake Shack, Blue Bottle, 銀座周邊晚餐",
+                tips: "元旦很多店沒開，百貨公司休息。神社人潮眾多。"
+            },
+            {
+                day: 2,
+                date: "1/2 (四)",
+                title: "秋葉原建築 & 新宿購物",
+                tag: "攝影+購物",
+                intensity: 6,
+                location: "Tokyo",
+                highlights: [
+                    "09:00 神田萬世橋 (紅磚拱門)",
+                    "10:00 聖橋 (電車交會)",
+                    "11:00 2k540 高架橋下職人街",
+                    "午餐：新宿敘敘苑 (預約 daniel79865)",
+                    "下午：秋葉原/新宿 購物狂歡 (動漫周邊)",
+                    "晚上：秋葉原自由活動"
+                ],
+                food: "新宿敘敘苑 (燒肉)",
+                tips: "早上集中拍攝建築，下午專心買東西。"
+            },
+            {
+                day: 3,
+                date: "1/3 (五)",
+                title: "下町風情：晴空塔・淺草・谷根千",
+                tag: "文化攝影",
+                intensity: 7,
+                location: "Tokyo",
+                highlights: [
+                    "清晨：十間橋 (晴空塔倒影)",
+                    "上午：淺草雷門 (人力車畫面)",
+                    "下午：上野之森 Sakura Terrace (拍車站)",
+                    "下午：東京大學 & 谷中銀座「夕陽階梯」",
+                    "晚餐：肉屋橫町 (預約 daniel79865)"
+                ],
+                food: "淺草鰻魚飯, 肉屋橫町 (和牛吃到飽)",
+                tips: "谷中銀座夕陽必拍。"
+            },
+            {
+                day: 4,
+                date: "1/4 (六)",
+                title: "賽馬日 & 秋葉原夜生活",
+                tag: "熱血",
+                intensity: 8,
+                location: "Chiba/Tokyo",
+                highlights: [
+                    "全日：中山競馬場 (中山金杯 GIII)",
+                    "拍攝：萬馬奔騰、帕多克馬匹狀態",
+                    "深夜：MOGRA (秋葉原 DJ Bar)",
+                    "Option: 63 angel"
+                ],
+                food: "馬場內B級美食",
+                tips: "週六晚上夜店氣氛最佳。"
+            },
+            {
+                day: 5,
+                date: "1/5 (日)",
+                title: "代官山・澀谷 SKY",
+                tag: "時尚街拍",
+                intensity: 6,
+                location: "Tokyo",
+                highlights: [
+                    "上午：代官山 蔦屋書店",
+                    "下午：惠比壽花園廣場塔",
+                    "傍晚：SHIBUYA SKY (預約夕陽場次)",
+                    "晚上：澀谷十字路口星巴克",
+                    "晚餐：Terumae 居酒屋"
+                ],
+                food: "炸牛排 Gyukatsu Motomura, Terumae",
+                tips: "Shibuya Sky 務必提前一個月搶票。"
+            },
+            {
+                day: 6,
+                date: "1/6 (一)",
+                title: "麻布台・東京塔",
+                tag: "藝術絕景",
+                intensity: 5,
+                location: "Tokyo",
+                highlights: [
+                    "上午：teamLab Borderless (麻布台Hills)",
+                    "拍攝：神谷町車站出口曲線",
+                    "拍攝：芝公園 (東京鐵塔)",
+                    "深夜：Live House"
+                ],
+                food: "雞湯拉麵 篝",
+                tips: "teamLab 建議預約上午場次。"
+            },
+            {
+                day: 7,
+                date: "1/7 (二)",
+                title: "移動日：東京 → 河口湖",
+                tag: "移動/風景",
+                intensity: 4,
+                location: "Fuji",
+                highlights: [
+                    "上午：移動 (富士回遊/巴士)",
+                    "午餐：炸牛排 Koushuya (河口湖店)",
+                    "下午：新倉山淺間公園 (忠靈塔+富士山)",
+                    "拍攝：本町二丁目商店街"
+                ],
+                food: "炸牛排 Koushuya",
+                tips: "新倉山淺間公園需爬398階梯。"
+            },
+            {
+                day: 8,
+                date: "1/8 (三)",
+                title: "河口湖環湖攝影",
+                tag: "自然風光",
+                intensity: 7,
+                location: "Fuji",
+                highlights: [
+                    "清晨：湖畔日出 (逆富士 - 長崎公園/產屋崎)",
+                    "景點：大石公園 (花海+富士山)",
+                    "景點：音樂盒之森美術館",
+                    "景點：天上山纜車 (Kachi Kachi Ropeway)"
+                ],
+                food: "河口湖周邊",
+                tips: "逆富士需要無風無雨的清晨。"
+            },
+            {
+                day: 9,
+                date: "1/9 (四)",
+                title: "忍野八海",
+                tag: "傳統建築",
+                intensity: 5,
+                location: "Fuji",
+                highlights: [
+                    "全日：忍野八海",
+                    "拍攝：鏡池 (逆富士)、湧池",
+                    "拍攝：傳統茅葺屋頂建築"
+                ],
+                food: "忍野八海小吃",
+                tips: "遊客極多，建議9點前抵達。"
+            },
+            {
+                day: 10,
+                date: "1/10 (五)",
+                title: "富士急・回東京",
+                tag: "遊樂/移動",
+                intensity: 6,
+                location: "Fuji/Tokyo",
+                highlights: [
+                    "上午：富士見橋 (富士山道路盡頭感)",
+                    "上午：Fuji-Q 富士急樂園",
+                    "傍晚：移動回東京 (住蒲田/羽田)"
+                ],
+                food: "富士急樂園餐廳",
+                tips: "住機場附近方便隔天早班機。"
+            },
+            {
+                day: 11,
+                date: "1/11 (六)",
+                title: "回程",
+                tag: "返家",
+                intensity: 2,
+                location: "Airport",
+                highlights: [
+                    "上午：羽田機場 (HND) -> 台北 (TPE)",
+                    "最後衝刺：機場伴手禮 (東京香蕉、薯條三兄弟)"
+                ],
+                food: "飛機餐",
+                tips: "注意電車首班車時間。"
+            }
+        ];
+
+        const photoMissions = [
+            { id: 1, text: "Day 1: 銀座/有樂町 車軌夜景 (長曝光)", type: "Photo" },
+            { id: 2, text: "Day 2: 聖橋 三線電車交會", type: "Photo" },
+            { id: 3, text: "Day 3: 十間橋 晴空塔完美倒影", type: "Photo" },
+            { id: 4, text: "Day 3: 谷中銀座 夕陽階梯剪影", type: "Photo" },
+            { id: 5, text: "Day 4: 中山競馬場 萬馬奔騰 (Panning)", type: "Photo" },
+            { id: 6, text: "Day 5: SHIBUYA SKY 百萬夜景 (消反光)", type: "Photo" },
+            { id: 7, text: "Day 6: teamLab Borderless 人像剪影", type: "Photo" },
+            { id: 8, text: "Day 6: 芝公園 紅白東京鐵塔", type: "Photo" },
+            { id: 9, text: "Day 7: 下吉田 本町二丁目 長焦壓縮感", type: "Photo" },
+            { id: 10, text: "Day 8: 河口湖 逆富士 (清晨)", type: "Photo" },
+            { id: 11, text: "Reel: 'The Next Station is Tokyo' (15張踩點)", type: "Video" },
+            { id: 12, text: "Reel: Shibuya Sky x 天氣之子 (POV)", type: "Video" }
+        ];
+
+        const shoppingList = [
+            { item: "猩猩之握 (相機腳架)", loc: "Yodobashi Akiba", cat: "Gear" },
+            { item: "減肥藥 (Onaka/Naishi)", loc: "松本清/OS Drug", cat: "Drugstore" },
+            { item: "老媽的背心", loc: "Uniqlo 銀座/Montbell", cat: "Clothing" },
+            { item: "New York Perfect Cheese", loc: "東京站/新宿", cat: "Souvenir" },
+            { item: "白色戀人", loc: "機場/日本橋", cat: "Souvenir" },
+            { item: "Royce 生巧克力", loc: "機場", cat: "Souvenir" },
+            { item: "Yoroshi化粧堂 365護唇膏", loc: "淺草", cat: "Souvenir" },
+            { item: "FUJIYAMA COOKIE", loc: "河口湖", cat: "Souvenir" },
+            { item: "LAWSON 草莓牛奶", loc: "便利商店", cat: "Daily Eat" },
+            { item: "OHAYO 焦糖烤布蕾冰淇淋", loc: "便利商店", cat: "Daily Eat" },
+            { item: "每晚一罐啤酒", loc: "便利商店", cat: "Daily Eat" },
+            { item: "Sweet Garden富士雪粉起士蛋糕", loc: "河口湖", cat: "Daily Eat" }
+        ];
+        
+        // --- Daily Routine Items Definition ---
+        const dailyRoutineItems = [
+            { id: 'run', text: '晨間跑步 / 散步', icon: '🏃', isFujiOnly: false },
+            { id: 'milk', text: 'LAWSON 草莓牛奶', icon: '🍓', isFujiOnly: false },
+            { id: 'icecream', text: 'OHAYO 焦糖烤布蕾冰淇淋', icon: '🍮', isFujiOnly: false },
+            { id: 'beer', text: '喝一罐啤酒', icon: '🍺', isFujiOnly: false },
+            { id: 'fuji_cake', text: 'Sweet Garden富士雪粉起士蛋糕', icon: '🗻', isFujiOnly: true }
+        ];
+
+        // --- 2. Core Interaction Logic ---
+
+        // State
+        let currentDayIndex = 0;
+        let checkedPhotos = new Set();
+        let checkedShop = new Set();
+        // New State for Daily Routine: Keyed by "dayIndex_itemId" -> boolean
+        let dailyRoutineState = {};
+
+        // DOM Elements
+        const dayTabs = document.getElementById('dayTabs');
+        const mainContent = document.getElementById('mainContent');
+        const photoChecklist = document.getElementById('photoChecklist');
+        const shoppingChecklist = document.getElementById('shoppingChecklist');
+        const photoProgress = document.getElementById('photoProgress');
+        const shopProgress = document.getElementById('shopProgress');
+
+        // Initialize Application
+        function init() {
+            // Load state from local storage (simulate simple persistence within session)
+            const savedRoutine = localStorage.getItem('dailyRoutineState');
+            if (savedRoutine) dailyRoutineState = JSON.parse(savedRoutine);
+
+            renderTabs();
+            renderContent(0);
+            renderCharts();
+            renderChecklists();
+        }
+
+        // Render Tabs
+        function renderTabs() {
+            dayTabs.innerHTML = '';
+            itineraryData.forEach((day, index) => {
+                const btn = document.createElement('button');
+                btn.className = `flex-shrink-0 px-5 py-2 rounded-lg text-sm font-medium transition-all duration-200 border ${index === currentDayIndex ? 'active-tab shadow-md' : 'inactive-tab'}`;
+                btn.textContent = `Day ${day.day}`;
+                btn.onclick = () => {
+                    currentDayIndex = index;
+                    renderTabs();
+                    renderContent(index);
+                };
+                dayTabs.appendChild(btn);
+            });
+        }
+
+        // Render Content (The detailed day view)
+        function renderContent(index) {
+            const data = itineraryData[index];
+            const isFujiArea = data.location === 'Fuji' || data.location.includes('Fuji');
+            
+            // Animation for transition
+            mainContent.style.opacity = '0';
+            
+            setTimeout(() => {
+                // Generate Daily Routine HTML
+                let routineHtml = '';
+                dailyRoutineItems.forEach(item => {
+                    // Skip if item is Fuji only but we are not in Fuji
+                    if (item.isFujiOnly && !isFujiArea) return;
+                    
+                    const stateKey = `${index}_${item.id}`;
+                    const isChecked = dailyRoutineState[stateKey] || false;
+                    
+                    routineHtml += `
+                        <div class="flex items-center gap-3 p-3 mb-2 rounded-lg cursor-pointer transition-all ${isChecked ? 'bg-green-50 border border-green-200' : 'bg-white border border-stone-200 hover:border-stone-400'}" 
+                             onclick="toggleRoutine(${index}, '${item.id}')">
+                            <div class="w-5 h-5 flex items-center justify-center rounded border ${isChecked ? 'bg-green-500 border-green-500 text-white' : 'border-stone-300'}">
+                                ${isChecked ? '✓' : ''}
+                            </div>
+                            <div class="flex-1 text-sm font-medium ${isChecked ? 'text-stone-400 line-through' : 'text-stone-700'}">
+                                <span class="mr-1">${item.icon}</span> ${item.text}
+                            </div>
+                        </div>
+                    `;
+                });
+
+                mainContent.innerHTML = `
+                    <div class="bg-white rounded-3xl shadow-lg border border-stone-200 overflow-hidden relative">
+                        <!-- Hero Header for the Card -->
+                        <div class="p-8 ${isFujiArea ? 'bg-gradient-to-r from-blue-50 to-indigo-50' : 'bg-gradient-to-r from-amber-50 to-orange-50'}">
+                            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                <div>
+                                    <h2 class="text-3xl font-bold text-stone-800 mb-2">${data.date} ${data.title}</h2>
+                                    <div class="flex gap-2">
+                                        <span class="px-3 py-1 text-xs font-bold uppercase tracking-wide rounded-full bg-white text-stone-600 border border-stone-200">
+                                            📍 ${data.location}
+                                        </span>
+                                        <span class="px-3 py-1 text-xs font-bold uppercase tracking-wide rounded-full ${data.intensity >= 8 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}">
+                                            ⚡ 強度: ${data.intensity}/10
+                                        </span>
+                                        <span class="px-3 py-1 text-xs font-bold uppercase tracking-wide rounded-full bg-stone-800 text-white">
+                                            ${data.tag}
+                                        </span>
+                                    </div>
+                                </div>
+                                
+                                <!-- AI Button -->
+                                <div>
+                                    <button 
+                                        onclick="getDailyTips(itineraryData[${index}])"
+                                        class="flex items-center gap-2 bg-white/80 hover:bg-white text-purple-700 px-4 py-2 rounded-xl shadow-sm border border-purple-200 transition-all hover:shadow-md backdrop-blur-sm"
+                                    >
+                                        <span class="text-lg">✨</span>
+                                        <span class="font-bold text-sm">本日私房建議</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="p-8">
+                            <!-- Layout Grid: Highlights (Left) & Daily Routine (Right) -->
+                            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+                                
+                                <!-- Column 1: Highlights (Takes up 2/3 space) -->
+                                <div class="lg:col-span-2">
+                                    <h3 class="text-lg font-bold text-stone-700 mb-4 border-b pb-2 border-stone-100">行程亮點</h3>
+                                    <ul class="space-y-4">
+                                        ${data.highlights.map(item => `
+                                            <li class="flex items-start gap-3">
+                                                <span class="mt-1.5 w-2 h-2 rounded-full ${item.includes('拍攝') ? 'bg-red-500' : 'bg-amber-500'} flex-shrink-0"></span>
+                                                <span class="text-stone-700 leading-relaxed">${item}</span>
+                                            </li>
+                                        `).join('')}
+                                    </ul>
+                                </div>
+
+                                <!-- Column 2: Daily Routine (Takes up 1/3 space) -->
+                                <div class="bg-stone-50 rounded-2xl p-5 border border-stone-100">
+                                    <h3 class="text-sm font-bold text-stone-500 uppercase mb-3 flex items-center gap-2">
+                                        <span>📅</span> 每日儀式 Checklist
+                                    </h3>
+                                    <div class="flex flex-col">
+                                        ${routineHtml}
+                                    </div>
+                                    <p class="text-xs text-stone-400 mt-2 text-center">讓每一天都有小確幸！</p>
+                                </div>
+                            </div>
+
+                            <!-- Footer Info Grid -->
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div class="bg-stone-50 p-4 rounded-xl">
+                                    <h4 class="text-sm font-bold text-stone-500 uppercase mb-2">🍽️ 餐飲 & 預約</h4>
+                                    <p class="text-stone-800 font-medium">${data.food}</p>
+                                </div>
+                                <div class="bg-amber-50 p-4 rounded-xl">
+                                    <h4 class="text-sm font-bold text-amber-600 uppercase mb-2">💡 攝影筆記 / 貼心提醒</h4>
+                                    <p class="text-stone-800 text-sm">${data.tips}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                mainContent.style.opacity = '1';
+                mainContent.style.transition = 'opacity 0.3s ease-in-out';
+            }, 50);
+        }
+        
+        // Toggle Routine Logic
+        window.toggleRoutine = function(dayIndex, itemId) {
+            const stateKey = `${dayIndex}_${itemId}`;
+            dailyRoutineState[stateKey] = !dailyRoutineState[stateKey];
+            
+            // Persist
+            localStorage.setItem('dailyRoutineState', JSON.stringify(dailyRoutineState));
+            
+            // Re-render specific day to show updated checkbox
+            renderContent(dayIndex);
+        };
+
+        // Render Checklists
+        function renderChecklists() {
+            // Photo List
+            photoChecklist.innerHTML = '';
+            photoMissions.forEach((item, idx) => {
+                const isChecked = checkedPhotos.has(idx);
+                const div = document.createElement('div');
+                div.className = `flex items-center justify-between gap-3 p-3 rounded-lg border transition-all ${isChecked ? 'bg-stone-50 border-stone-200' : 'bg-white border-stone-100 hover:border-amber-300 hover:shadow-sm'}`;
+                
+                div.innerHTML = `
+                    <div class="flex items-center gap-3 cursor-pointer flex-grow" onclick="togglePhoto(${idx})">
+                        <div class="w-5 h-5 rounded border flex items-center justify-center flex-shrink-0 ${isChecked ? 'bg-amber-500 border-amber-500 text-white' : 'border-stone-300'}">
+                            ${isChecked ? '✓' : ''}
+                        </div>
+                        <div>
+                            <div class="text-sm font-medium ${isChecked ? 'line-through text-stone-400' : 'text-stone-700'}">${item.text}</div>
+                            <div class="text-xs text-stone-400">${item.type}</div>
+                        </div>
+                    </div>
+                    
+                    <!-- AI Hint Button -->
+                    <button onclick="getPhotoGuide('${item.text}')" class="text-purple-500 hover:text-purple-700 hover:bg-purple-50 p-1.5 rounded-md text-xs font-bold border border-transparent hover:border-purple-200 transition-colors flex items-center gap-1">
+                        ✨ <span class="hidden sm:inline">攻略</span>
+                    </button>
+                `;
+                photoChecklist.appendChild(div);
+            });
+            photoProgress.textContent = `${checkedPhotos.size}/${photoMissions.length} 完成`;
+
+            // Shopping List
+            shoppingChecklist.innerHTML = '';
+            shoppingList.forEach((item, idx) => {
+                const isChecked = checkedShop.has(idx);
+                const div = document.createElement('div');
+                div.className = `flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${isChecked ? 'bg-stone-50 border-stone-200 opacity-60' : 'bg-white border-stone-100 hover:border-blue-300 hover:shadow-sm'}`;
+                div.onclick = () => toggleShop(idx);
+                div.innerHTML = `
+                    <div class="w-5 h-5 rounded border flex items-center justify-center ${isChecked ? 'bg-blue-500 border-blue-500 text-white' : 'border-stone-300'}">
+                        ${isChecked ? '✓' : ''}
+                    </div>
+                    <div>
+                        <div class="text-sm font-medium ${isChecked ? 'line-through text-stone-400' : 'text-stone-700'}">${item.item}</div>
+                        <div class="text-xs text-stone-400">${item.loc} • ${item.cat}</div>
+                    </div>
+                `;
+                shoppingChecklist.appendChild(div);
+            });
+            shopProgress.textContent = `${checkedShop.size}/${shoppingList.length} 購入`;
+        }
+
+        function togglePhoto(idx) {
+            if (checkedPhotos.has(idx)) checkedPhotos.delete(idx);
+            else checkedPhotos.add(idx);
+            renderChecklists();
+        }
+
+        function toggleShop(idx) {
+            if (checkedShop.has(idx)) checkedShop.delete(idx);
+            else checkedShop.add(idx);
+            renderChecklists();
+        }
+
+        // --- 3. Chart Implementation ---
+        function renderCharts() {
+            // Chart 1: Trip Focus (Donut)
+            const ctxFocus = document.getElementById('focusChart').getContext('2d');
+            new Chart(ctxFocus, {
+                type: 'doughnut',
+                data: {
+                    labels: ['攝影 (Photography)', '購物 (Shopping)', '美食 (Dining)', '移動 (Transit)', '賽馬/娛樂 (Ent)'],
+                    datasets: [{
+                        data: [45, 15, 20, 10, 10], // Estimated weights based on text
+                        backgroundColor: ['#d97706', '#3b82f6', '#10b981', '#6b7280', '#8b5cf6'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'right' }
+                    }
+                }
+            });
+
+            // Chart 2: Daily Intensity (Bar)
+            const ctxIntensity = document.getElementById('intensityChart').getContext('2d');
+            new Chart(ctxIntensity, {
+                type: 'bar',
+                data: {
+                    labels: itineraryData.map(d => `Day ${d.day}`),
+                    datasets: [{
+                        label: '體力消耗強度 (1-10)',
+                        data: itineraryData.map(d => d.intensity),
+                        backgroundColor: itineraryData.map(d => d.intensity >= 8 ? '#f87171' : (d.intensity >= 6 ? '#fbbf24' : '#34d399')),
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { beginAtZero: true, max: 10 }
+                    },
+                    onClick: (e, elements) => {
+                        if (elements.length > 0) {
+                            const index = elements[0].index;
+                            currentDayIndex = index;
+                            renderTabs();
+                            renderContent(index);
+                            // Smooth scroll to content
+                            mainContent.scrollIntoView({ behavior: 'smooth' });
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                afterLabel: function(context) {
+                                    return itineraryData[context.dataIndex].title;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Start
+        init();
+
+    </script>
+</body>
+</html>
