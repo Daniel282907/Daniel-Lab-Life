@@ -180,6 +180,7 @@
         import { getFirestore, doc, setDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- Global Variables & State ---
+        const TRIP_ID = 'tokyo_fuji_2025_fixed_v1'; // 固定 Trip ID
         let currentDayIndex = 0;
         let checkedPhotos = new Set();
         let checkedShop = new Set();
@@ -707,8 +708,8 @@
                     if (!auth.currentUser) await signInAnonymously(auth);
                 }
 
-                // Firestore Sync
-                docRef = doc(db, 'artifacts', appId, 'public', 'data', 'trip_state', 'main');
+                // Firestore Sync - Fixed Trip ID
+                docRef = doc(db, 'artifacts', appId, 'public', 'data', 'trip_state', TRIP_ID);
 
                 onSnapshot(docRef, (docSnap) => {
                     if (docSnap.exists()) {
