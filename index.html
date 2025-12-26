@@ -5,7 +5,8 @@
     3.  **Photography Command Center:** Checklists.
     4.  **Logistics & Loot:** Shopping list.
     5.  **Daily Routine Checklist:** Running, Snacks, Beer, Fuji Cake.
-    6.  **Firebase Integration:** Real-time sync for checklist states.
+    6.  **Bookkeeping:** Daily expense tracking syncing to summary.
+    7.  **Firebase Integration:** Real-time sync for checklist states.
 -->
 
 <!DOCTYPE html>
@@ -61,6 +62,14 @@
             -ms-overflow-style: none;
             scrollbar-width: none;
         }
+        /* Fade in animation for new expenses */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .expense-item {
+            animation: fadeIn 0.3s ease-out;
+        }
     </style>
 </head>
 <body class="text-stone-800">
@@ -77,6 +86,7 @@
                 <span class="px-3 py-1 bg-blue-100 text-blue-800 rounded-full">🗻 富士山絕景</span>
                 <span class="px-3 py-1 bg-green-100 text-green-800 rounded-full">🔄 即時同步</span>
             </div>
+            <p class="text-xs text-stone-400 mt-2">📧 所有憑證：daniel79865 信箱</p>
         </header>
 
         <!-- Dashboard / Overview Section -->
@@ -128,8 +138,10 @@
 
         <!-- Secondary Charts Section -->
         <section class="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
-            <h2 class="text-xl font-bold mb-2 text-stone-800">⚡ 每日體力消耗預估</h2>
-            <p class="text-sm text-stone-500 mb-6">點擊下方圖表可直接跳轉至該日行程。</p>
+            <div class="flex justify-between items-center mb-2">
+                <h2 class="text-xl font-bold text-stone-800">⚡ 預估強度 vs 手機實際步數</h2>
+            </div>
+            <p class="text-sm text-stone-500 mb-6">長條圖為預估疲勞度，<span class="text-blue-600 font-bold">折線為您手動輸入的手機步數</span>。</p>
             <div class="chart-container">
                 <canvas id="intensityChart"></canvas>
             </div>
@@ -164,6 +176,18 @@
             </section>
         </div>
 
+        <!-- NEW: Expenses & Tickets Summary -->
+        <section class="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
+            <h2 class="text-xl font-bold text-stone-800 mb-4">💰 費用總表 (預付 + 每日記帳)</h2>
+            <p class="text-sm text-stone-500 mb-4">所有電子憑證均在信箱 <span class="font-mono bg-stone-100 px-1 rounded text-stone-700">daniel79865</span> 中。每日記帳將自動匯總於此。</p>
+            
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm text-left text-stone-600" id="expensesTable">
+                    <!-- JS will populate this table completely -->
+                </table>
+            </div>
+        </section>
+
         <!-- Footer -->
         <footer class="text-center text-stone-400 text-sm py-8 border-t border-stone-200">
             <p>2025 Tokyo & Fuji Solo Trip • Photography Itinerary</p>
@@ -185,12 +209,31 @@
         let checkedPhotos = new Set();
         let checkedShop = new Set();
         let dailyRoutineState = {};
+        let stepCounts = {}; 
+        let customExpenses = []; // Array of { id, dayIndex, name, price }
+        
+        // Chart instances
+        let chartInstance = null; 
+        let focusChartInstance = null;
         
         // Firebase Globals
         let db;
         let docRef;
 
-        // --- Data Source ---
+        // --- Static Data ---
+        
+        // Fixed Expenses Data (Moved from HTML to JS for easier merging)
+        const fixedExpenses = [
+            { name: "東京七天六夜住宿", platform: "Agoda", details: "前 6 晚 + 後 1 晚 (組合)", price: 7949 },
+            { name: "機票來回", platform: "Agoda", details: "TPE <-> NRT/HND", price: 9588 },
+            { name: "富士山4天3夜 + 東京1晚", platform: "Booking", details: "4543 (富士) + 1695 (東京)", price: 6238 },
+            { name: "Shibuya Sky 門票", platform: "官網", details: "1/5 下午 3:00", price: 680, highlight: true },
+            { name: "teamLab Borderless", platform: "Klook", details: "1/6 11:30 數位藝術美術館", price: 958, highlight: true },
+            { name: "新宿-河口湖 公車來回", platform: "預約", details: "去:1/7 1109, 回:1/10 1106", price: 888 },
+            { name: "富士山全景索道纜車", platform: "Klook", details: "1/8 往返票", price: 201, highlight: true },
+            { name: "eSIM 網卡", platform: "KKday", details: "日本上網", price: 287 }
+        ];
+
         const itineraryData = [
             {
                 day: 1,
@@ -221,11 +264,11 @@
                     "09:00 神田萬世橋 (紅磚拱門)",
                     "10:00 聖橋 (電車交會)",
                     "11:00 2k540 高架橋下職人街",
-                    "午餐：新宿敘敘苑 (預約 daniel79865)",
+                    "午餐：敘敘院 燒肉 (12:30 預約)",
                     "下午：秋葉原/新宿 購物狂歡 (動漫周邊)",
                     "晚上：秋葉原自由活動"
                 ],
-                food: "新宿敘敘苑 (燒肉)",
+                food: "敘敘院 (12:30 預約)",
                 tips: "早上集中拍攝建築，下午專心買東西。"
             },
             {
@@ -240,9 +283,9 @@
                     "上午：淺草雷門 (人力車畫面)",
                     "下午：上野之森 Sakura Terrace (拍車站)",
                     "下午：東京大學 & 谷中銀座「夕陽階梯」",
-                    "晚餐：肉屋橫町 (預約 daniel79865)"
+                    "晚餐：肉屋橫町 (18:00 預約)"
                 ],
-                food: "淺草鰻魚飯, 肉屋橫町 (和牛吃到飽)",
+                food: "淺草鰻魚飯, 肉屋橫町 (18:00 預約)",
                 tips: "谷中銀座夕陽必拍。"
             },
             {
@@ -271,12 +314,12 @@
                 highlights: [
                     "上午：代官山 蔦屋書店",
                     "下午：惠比壽花園廣場塔",
-                    "傍晚：SHIBUYA SKY (預約夕陽場次)",
+                    "15:00 SHIBUYA SKY (已預約/購票)",
                     "晚上：澀谷十字路口星巴克",
-                    "晚餐：Terumae 居酒屋"
+                    "晚餐：Terumae 居酒屋 (19:00 預約)"
                 ],
-                food: "炸牛排 Gyukatsu Motomura, Terumae",
-                tips: "Shibuya Sky 務必提前一個月搶票。"
+                food: "炸牛排, Terumae (19:00 預約)",
+                tips: "SHIBUYA SKY 下午3點入場，可一路拍到夕陽。"
             },
             {
                 day: 6,
@@ -286,13 +329,13 @@
                 intensity: 5,
                 location: "Tokyo",
                 highlights: [
-                    "上午：teamLab Borderless (麻布台Hills)",
+                    "11:30 teamLab Borderless (麻布台Hills)",
                     "拍攝：神谷町車站出口曲線",
                     "拍攝：芝公園 (東京鐵塔)",
                     "深夜：Live House"
                 ],
                 food: "雞湯拉麵 篝",
-                tips: "teamLab 建議預約上午場次。"
+                tips: "teamLab 已購票 11:30 入場。"
             },
             {
                 day: 7,
@@ -302,13 +345,13 @@
                 intensity: 4,
                 location: "Fuji",
                 highlights: [
-                    "上午：移動 (富士回遊/巴士)",
+                    "13:15 新宿高速巴士 (車次1109)",
                     "午餐：炸牛排 Koushuya (河口湖店)",
                     "下午：新倉山淺間公園 (忠靈塔+富士山)",
                     "拍攝：本町二丁目商店街"
                 ],
                 food: "炸牛排 Koushuya",
-                tips: "新倉山淺間公園需爬398階梯。"
+                tips: "新倉山淺間公園需爬398階梯。記得提前到新宿巴士總站。"
             },
             {
                 day: 8,
@@ -324,7 +367,7 @@
                     "景點：天上山纜車 (Kachi Kachi Ropeway)"
                 ],
                 food: "河口湖周邊",
-                tips: "逆富士需要無風無雨的清晨。"
+                tips: "逆富士需要無風無雨的清晨。纜車票Klook已買。"
             },
             {
                 day: 9,
@@ -350,11 +393,12 @@
                 location: "Fuji/Tokyo",
                 highlights: [
                     "上午：富士見橋 (富士山道路盡頭感)",
-                    "上午：Fuji-Q 富士急樂園",
-                    "傍晚：移動回東京 (住蒲田/羽田)"
+                    "11:10 河口湖發車回新宿 (車次1106)",
+                    "下午：東京最後衝刺",
+                    "傍晚：入住最後一晚住宿"
                 ],
-                food: "富士急樂園餐廳",
-                tips: "住機場附近方便隔天早班機。"
+                food: "東京市區",
+                tips: "記得 11:10 前回到河口湖車站搭車。"
             },
             {
                 day: 11,
@@ -410,16 +454,12 @@
             { id: 'fuji_cake', text: 'Sweet Garden富士雪粉起士蛋糕', icon: '🗻', isFujiOnly: true }
         ];
 
-        // --- Core Interaction Functions (Defined Immediately) ---
-        // These are attached to window so HTML 'onclick' can find them immediately
-        // even if Firebase is still loading.
+        // --- Core Interaction Functions ---
 
         window.toggleRoutine = function(dayIndex, itemId) {
             const stateKey = `${dayIndex}_${itemId}`;
             dailyRoutineState[stateKey] = !dailyRoutineState[stateKey];
-            // Re-render local state immediately (Optimistic UI)
             renderContent(dayIndex);
-            // Try to sync to cloud (if connected)
             syncState(); 
         };
 
@@ -437,6 +477,50 @@
             syncState();
         };
 
+        window.updateSteps = function(dayIndex, value) {
+            stepCounts[dayIndex] = parseInt(value) || 0;
+            renderCharts(); 
+            syncState();
+        };
+
+        // NEW: Expense Functions
+        window.addExpense = function(dayIndex) {
+            const nameInput = document.getElementById(`expense-name-${dayIndex}`);
+            const priceInput = document.getElementById(`expense-price-${dayIndex}`);
+            
+            const name = nameInput.value.trim();
+            const price = parseInt(priceInput.value);
+
+            if (!name || isNaN(price)) {
+                alert("請輸入有效的項目名稱與金額");
+                return;
+            }
+
+            const newExpense = {
+                id: Date.now().toString(), // Simple ID
+                dayIndex: dayIndex,
+                name: name,
+                price: price
+            };
+
+            customExpenses.push(newExpense);
+            
+            // Clear inputs
+            nameInput.value = "";
+            priceInput.value = "";
+
+            renderContent(dayIndex); // Refresh daily view
+            renderExpensesTable(); // Refresh summary table
+            syncState();
+        };
+
+        window.deleteExpense = function(expenseId, dayIndex) {
+            customExpenses = customExpenses.filter(e => e.id !== expenseId);
+            renderContent(dayIndex);
+            renderExpensesTable();
+            syncState();
+        };
+
         // --- Render Functions ---
 
         const dayTabs = document.getElementById('dayTabs');
@@ -445,6 +529,7 @@
         const shoppingChecklist = document.getElementById('shoppingChecklist');
         const photoProgress = document.getElementById('photoProgress');
         const shopProgress = document.getElementById('shopProgress');
+        const expensesTable = document.getElementById('expensesTable');
 
         function renderTabs() {
             dayTabs.innerHTML = '';
@@ -464,11 +549,15 @@
         function renderContent(index) {
             const data = itineraryData[index];
             const isFujiArea = data.location === 'Fuji' || data.location.includes('Fuji');
+            const currentSteps = stepCounts[index] || '';
             
+            // Get expenses for this day
+            const dailyExpenses = customExpenses.filter(e => e.dayIndex === index);
+            const dailyTotal = dailyExpenses.reduce((sum, e) => sum + e.price, 0);
+
             // Generate Daily Routine HTML
             let routineHtml = '';
             dailyRoutineItems.forEach(item => {
-                // Skip if item is Fuji only but we are not in Fuji
                 if (item.isFujiOnly && !isFujiArea) return;
                 
                 const stateKey = `${index}_${item.id}`;
@@ -486,6 +575,28 @@
                     </div>
                 `;
             });
+
+            // Generate Expense List HTML
+            let expensesListHtml = '';
+            if (dailyExpenses.length > 0) {
+                expensesListHtml = `<div class="mt-3 space-y-2">`;
+                dailyExpenses.forEach(exp => {
+                    expensesListHtml += `
+                        <div class="flex justify-between items-center bg-white p-2 rounded border border-stone-100 expense-item">
+                            <span class="text-sm text-stone-700">${exp.name}</span>
+                            <div class="flex items-center gap-3">
+                                <span class="text-sm font-mono text-stone-600">$${exp.price}</span>
+                                <button onclick="window.deleteExpense('${exp.id}', ${index})" class="text-red-400 hover:text-red-600">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                });
+                expensesListHtml += `</div>`;
+            } else {
+                expensesListHtml = `<p class="text-xs text-stone-400 mt-2 text-center italic">今日尚未新增消費</p>`;
+            }
 
             mainContent.innerHTML = `
                 <div class="bg-white rounded-3xl shadow-lg border border-stone-200 overflow-hidden relative">
@@ -510,31 +621,73 @@
                     </div>
 
                     <div class="p-8">
-                        <!-- Layout Grid: Highlights (Left) & Daily Routine (Right) -->
+                        <!-- Layout Grid: Highlights (Left) & Right Sidebar -->
                         <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
                             
                             <!-- Column 1: Highlights (Takes up 2/3 space) -->
-                            <div class="lg:col-span-2">
-                                <h3 class="text-lg font-bold text-stone-700 mb-4 border-b pb-2 border-stone-100">行程亮點</h3>
-                                <ul class="space-y-4">
-                                    ${data.highlights.map(item => `
-                                        <li class="flex items-start gap-3">
-                                            <span class="mt-1.5 w-2 h-2 rounded-full ${item.includes('拍攝') ? 'bg-red-500' : 'bg-amber-500'} flex-shrink-0"></span>
-                                            <span class="text-stone-700 leading-relaxed">${item}</span>
-                                        </li>
-                                    `).join('')}
-                                </ul>
+                            <div class="lg:col-span-2 space-y-6">
+                                <div>
+                                    <h3 class="text-lg font-bold text-stone-700 mb-4 border-b pb-2 border-stone-100">行程亮點</h3>
+                                    <ul class="space-y-4">
+                                        ${data.highlights.map(item => `
+                                            <li class="flex items-start gap-3">
+                                                <span class="mt-1.5 w-2 h-2 rounded-full ${item.includes('車次') || item.includes('預約') ? 'bg-blue-500' : (item.includes('拍攝') ? 'bg-red-500' : 'bg-amber-500')} flex-shrink-0"></span>
+                                                <span class="text-stone-700 leading-relaxed ${item.includes('車次') || item.includes('預約') ? 'font-bold' : ''}">${item}</span>
+                                            </li>
+                                        `).join('')}
+                                    </ul>
+                                </div>
+
+                                <!-- Step Count Input -->
+                                <div class="bg-white border border-blue-200 rounded-xl p-4 flex items-center justify-between shadow-sm">
+                                    <div class="flex items-center gap-3">
+                                         <div class="p-2 bg-blue-100 text-blue-600 rounded-lg">
+                                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16v-2.38C4 11.5 2.97 10.5 3 8c.03-2.72 1.49-6 4.5-6C9.37 2 11 3.8 11 8c0 2.85-2.98 5.54-3 8h6c.02-2.46-2.98-5.15-3-8 0-4.2 1.63-6 3.5-6 3.01 0 4.47 3.28 4.5 6 .03 2.5-1 3.5-1 5.62V16h-1v6h2v-6h1v6h2v-6h1v-2c0-2.31.7-3.58 1-5H3c.3 1.42 1 2.69 1 5v2h1v-6h1v6h2v-6h1v6h2v-6z"></path></svg>
+                                         </div>
+                                         <div>
+                                             <h4 class="font-bold text-stone-700">手機步數紀錄</h4>
+                                         </div>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <input type="number" id="stepInput" 
+                                               class="w-24 border border-stone-300 rounded-lg px-3 py-2 text-right font-mono focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none" 
+                                               placeholder="0" 
+                                               value="${currentSteps}"
+                                               onchange="window.updateSteps(${index}, this.value)">
+                                        <span class="text-sm text-stone-500">步</span>
+                                    </div>
+                                </div>
                             </div>
 
-                            <!-- Column 2: Daily Routine (Takes up 1/3 space) -->
-                            <div class="bg-stone-50 rounded-2xl p-5 border border-stone-100 daily-routine-container">
-                                <h3 class="text-sm font-bold text-stone-500 uppercase mb-3 flex items-center gap-2">
-                                    <span>📅</span> 每日儀式 Checklist
-                                </h3>
-                                <div class="flex flex-col">
-                                    ${routineHtml}
+                            <!-- Column 2: Sidebar (Routine + Expenses) -->
+                            <div class="space-y-6">
+                                <!-- Daily Routine -->
+                                <div class="bg-stone-50 rounded-2xl p-5 border border-stone-100">
+                                    <h3 class="text-sm font-bold text-stone-500 uppercase mb-3 flex items-center gap-2">
+                                        <span>📅</span> 每日儀式 Checklist
+                                    </h3>
+                                    <div class="flex flex-col">
+                                        ${routineHtml}
+                                    </div>
                                 </div>
-                                <p class="text-xs text-stone-400 mt-2 text-center">讓每一天都有小確幸！</p>
+
+                                <!-- NEW: Daily Expense Tracker -->
+                                <div class="bg-indigo-50 rounded-2xl p-5 border border-indigo-100">
+                                    <h3 class="text-sm font-bold text-indigo-800 uppercase mb-3 flex items-center gap-2 justify-between">
+                                        <span>💸 今日記帳</span>
+                                        <span class="text-xs bg-white px-2 py-0.5 rounded border border-indigo-100 text-indigo-600">小計: $${dailyTotal}</span>
+                                    </h3>
+                                    
+                                    <!-- Input Form -->
+                                    <div class="flex gap-2 mb-3">
+                                        <input type="text" id="expense-name-${index}" placeholder="項目" class="w-full rounded border border-stone-300 px-2 py-1 text-sm focus:outline-none focus:border-indigo-400">
+                                        <input type="number" id="expense-price-${index}" placeholder="$" class="w-20 rounded border border-stone-300 px-2 py-1 text-sm focus:outline-none focus:border-indigo-400">
+                                        <button onclick="window.addExpense(${index})" class="bg-indigo-600 text-white rounded px-3 py-1 text-sm hover:bg-indigo-700 transition-colors">+</button>
+                                    </div>
+                                    
+                                    <!-- List -->
+                                    ${expensesListHtml}
+                                </div>
                             </div>
                         </div>
 
@@ -598,6 +751,77 @@
             shopProgress.textContent = `${checkedShop.size}/${shoppingList.length} 購入`;
         }
 
+        function renderExpensesTable() {
+            // Header
+            let html = `
+                <thead class="text-xs text-stone-700 uppercase bg-stone-50">
+                    <tr>
+                        <th scope="col" class="px-6 py-3">項目</th>
+                        <th scope="col" class="px-6 py-3">平台/類別</th>
+                        <th scope="col" class="px-6 py-3">詳細資訊 / 日期</th>
+                        <th scope="col" class="px-6 py-3 text-right">金額 (TWD)</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-stone-100">
+            `;
+
+            let grandTotal = 0;
+
+            // 1. Fixed Expenses
+            fixedExpenses.forEach(exp => {
+                grandTotal += exp.price;
+                html += `
+                    <tr class="bg-white border-b hover:bg-stone-50">
+                        <td class="px-6 py-4 font-medium text-stone-900">${exp.name}</td>
+                        <td class="px-6 py-4">${exp.platform}</td>
+                        <td class="px-6 py-4 ${exp.highlight ? 'text-amber-600 font-bold' : ''}">${exp.details}</td>
+                        <td class="px-6 py-4 text-right">${exp.price.toLocaleString()}</td>
+                    </tr>
+                `;
+            });
+
+            // 2. Separator if custom expenses exist
+            if (customExpenses.length > 0) {
+                html += `
+                    <tr class="bg-stone-100">
+                        <td colspan="4" class="px-6 py-2 text-xs font-bold text-stone-500 uppercase text-center tracking-wider">
+                            ⬇️ 旅途記帳 (現地消費) ⬇️
+                        </td>
+                    </tr>
+                `;
+
+                // Sort custom expenses by day
+                const sortedCustom = [...customExpenses].sort((a, b) => a.dayIndex - b.dayIndex);
+
+                sortedCustom.forEach(exp => {
+                    grandTotal += exp.price;
+                    html += `
+                        <tr class="bg-indigo-50/30 border-b hover:bg-indigo-50">
+                            <td class="px-6 py-4 font-medium text-stone-900">${exp.name}</td>
+                            <td class="px-6 py-4 text-stone-500">每日記帳</td>
+                            <td class="px-6 py-4 text-indigo-600 font-medium">Day ${exp.dayIndex + 1}</td>
+                            <td class="px-6 py-4 text-right">${exp.price.toLocaleString()}</td>
+                        </tr>
+                    `;
+                });
+            }
+
+            // Footer Total
+            html += `
+                </tbody>
+                <tfoot class="bg-stone-100 font-bold text-stone-900">
+                    <tr>
+                        <td scope="row" class="px-6 py-3 text-base">總計 (TWD)</td>
+                        <td class="px-6 py-3"></td>
+                        <td class="px-6 py-3"></td>
+                        <td class="px-6 py-3 text-right text-base text-indigo-700">${grandTotal.toLocaleString()}</td>
+                    </tr>
+                </tfoot>
+            `;
+
+            expensesTable.innerHTML = html;
+        }
+
         function renderCharts() {
             try {
                 if (typeof Chart === 'undefined') {
@@ -608,7 +832,11 @@
                 // Chart 1: Trip Focus (Donut)
                 const ctxFocus = document.getElementById('focusChart')?.getContext('2d');
                 if (ctxFocus) {
-                    new Chart(ctxFocus, {
+                    if (focusChartInstance) {
+                        focusChartInstance.destroy();
+                    }
+
+                    focusChartInstance = new Chart(ctxFocus, {
                         type: 'doughnut',
                         data: {
                             labels: ['攝影 (Photography)', '購物 (Shopping)', '美食 (Dining)', '移動 (Transit)', '賽馬/娛樂 (Ent)'],
@@ -628,25 +856,57 @@
                     });
                 }
 
-                // Chart 2: Daily Intensity (Bar)
+                // Chart 2: Daily Intensity (Bar + Line)
                 const ctxIntensity = document.getElementById('intensityChart')?.getContext('2d');
                 if (ctxIntensity) {
-                    new Chart(ctxIntensity, {
+                    const stepsData = itineraryData.map((_, i) => stepCounts[i] || 0);
+
+                    if (chartInstance) {
+                        chartInstance.destroy(); 
+                    }
+
+                    chartInstance = new Chart(ctxIntensity, {
                         type: 'bar',
                         data: {
                             labels: itineraryData.map(d => `Day ${d.day}`),
-                            datasets: [{
-                                label: '體力消耗強度 (1-10)',
-                                data: itineraryData.map(d => d.intensity),
-                                backgroundColor: itineraryData.map(d => d.intensity >= 8 ? '#f87171' : (d.intensity >= 6 ? '#fbbf24' : '#34d399')),
-                                borderRadius: 4
-                            }]
+                            datasets: [
+                                {
+                                    label: '預估強度 (1-10)',
+                                    data: itineraryData.map(d => d.intensity),
+                                    backgroundColor: itineraryData.map(d => d.intensity >= 8 ? '#fca5a5' : (d.intensity >= 6 ? '#fcd34d' : '#6ee7b7')), 
+                                    borderRadius: 4,
+                                    yAxisID: 'y',
+                                    order: 2
+                                },
+                                {
+                                    label: '實際手機步數',
+                                    data: stepsData,
+                                    borderColor: '#2563eb', 
+                                    backgroundColor: '#2563eb',
+                                    type: 'line',
+                                    tension: 0.3,
+                                    yAxisID: 'y1',
+                                    order: 1
+                                }
+                            ]
                         },
                         options: {
                             responsive: true,
                             maintainAspectRatio: false,
                             scales: {
-                                y: { beginAtZero: true, max: 10 }
+                                y: {
+                                    beginAtZero: true,
+                                    max: 10,
+                                    title: { display: true, text: '強度' },
+                                    grid: { display: false }
+                                },
+                                y1: {
+                                    beginAtZero: true,
+                                    position: 'right',
+                                    title: { display: true, text: '步數' },
+                                    suggestedMax: 20000,
+                                    grid: { drawOnChartArea: true } 
+                                }
                             },
                             onClick: (e, elements) => {
                                 if (elements.length > 0) {
@@ -659,11 +919,8 @@
                             },
                             plugins: {
                                 tooltip: {
-                                    callbacks: {
-                                        afterLabel: function(context) {
-                                            return itineraryData[context.dataIndex].title;
-                                        }
-                                    }
+                                    mode: 'index',
+                                    intersect: false
                                 }
                             }
                         }
@@ -677,14 +934,11 @@
         // --- Init Function ---
 
         async function initApp() {
-            // 1. Immediate UI Render (Optimistic)
             renderTabs();
             renderContent(0);
             renderChecklists();
-            // Wait slightly for Chart.js to load if needed
-            setTimeout(renderCharts, 100);
-
-            // 2. Firebase Async Init
+            renderExpensesTable(); // Initial render of table
+            
             try {
                 if (typeof __firebase_config === 'undefined') {
                     console.warn("Firebase config not found in env");
@@ -696,7 +950,6 @@
                 db = getFirestore(app);
                 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
-                // Auth
                 try {
                     if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                         await signInWithCustomToken(auth, __initial_auth_token);
@@ -708,7 +961,7 @@
                     if (!auth.currentUser) await signInAnonymously(auth);
                 }
 
-                // Firestore Sync - Fixed Trip ID
+                // Firestore Sync
                 docRef = doc(db, 'artifacts', appId, 'public', 'data', 'trip_state', TRIP_ID);
 
                 onSnapshot(docRef, (docSnap) => {
@@ -717,29 +970,35 @@
                         checkedPhotos = new Set(data.checkedPhotos || []);
                         checkedShop = new Set(data.checkedShop || []);
                         dailyRoutineState = data.dailyRoutine || {};
-                        
-                        // Update UI with cloud data
+                        stepCounts = data.stepCounts || {}; 
+                        customExpenses = data.customExpenses || []; // Sync expenses
+
+                        // Update UI
                         renderChecklists();
-                        // Optional: re-render content if viewing a specific day
-                        // We check if the element exists to ensure we don't error out
-                        if(document.getElementById('mainContent')) {
-                             // Only re-render routine checkboxes part ideally, but full re-render is safer for consistency
-                             // renderContent(currentDayIndex); 
-                             // NOTE: Avoiding full re-render here to prevent scroll jumps or overriding user interactions in progress
-                             // Instead, we trust the optimistic update and only full re-render if needed. 
-                             // For this simple app, we will let user click refresh if they want full sync visual update inside the daily card
+                        renderCharts(); 
+                        renderExpensesTable(); // Re-render table on sync
+                        
+                        // If viewing a specific day, we should probably re-render the content to show updated expense list
+                        // But be careful not to wipe input focus if typing. 
+                        // For simplicity, we only re-render the list if the current user isn't typing? 
+                        // Actually, since we want to see additions immediately, we can re-render.
+                        if (document.activeElement.tagName !== 'INPUT') {
+                             renderContent(currentDayIndex);
                         }
+                        
                     } else {
-                         // Create doc if missing
-                         setDoc(docRef, { checkedPhotos: [], checkedShop: [], dailyRoutine: {} })
+                         setDoc(docRef, { checkedPhotos: [], checkedShop: [], dailyRoutine: {}, stepCounts: {}, customExpenses: [] })
                            .catch(err => console.log("Create doc silent fail:", err));
                     }
                 }, (err) => {
                     console.log("Sync paused:", err.code);
                 });
+                
+                setTimeout(renderCharts, 100);
 
             } catch (err) {
                 console.error("Firebase Init Error:", err);
+                setTimeout(renderCharts, 100);
             }
         }
 
@@ -748,11 +1007,12 @@
             setDoc(docRef, {
                 checkedPhotos: Array.from(checkedPhotos),
                 checkedShop: Array.from(checkedShop),
-                dailyRoutine: dailyRoutineState
+                dailyRoutine: dailyRoutineState,
+                stepCounts: stepCounts,
+                customExpenses: customExpenses
             }, { merge: true }).catch(err => console.error("Sync Error:", err));
         }
 
-        // Start
         initApp();
 
     </script>
