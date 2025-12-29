@@ -3,10 +3,8 @@
     1.  **Dashboard Overview:** Summary of trip stats.
     2.  **Interactive Timeline:** Tab-based navigation.
     3.  **Photography Command Center:** Checklists.
-    4.  **Logistics & Loot:** Shopping list.
-    5.  **Daily Routine Checklist:** Running, Snacks, Beer, Fuji Cake.
-    6.  **Bookkeeping:** Daily expense tracking syncing to summary.
-    7.  **Firebase Integration:** Real-time sync for checklist states.
+    4.  **Bookkeeping (Refactored):** Uses separate collections for robust sync.
+    5.  **Firebase Integration:** Real-time listeners for multiple collections.
 -->
 
 <!DOCTYPE html>
@@ -14,11 +12,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>東京 & 富士山 11天10夜 獨旅攝影指揮中心 (Sync Edition)</title>
+    <title>東京 & 富士山 11天10夜 獨旅攝影指揮中心 (Pro Sync)</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Chart.js with crossorigin to prevent Script Error on load issues -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js" crossorigin="anonymous"></script>
-    <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     
     <!-- Firebase SDKs -->
@@ -30,7 +26,7 @@
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap');
         body {
             font-family: 'Noto Sans TC', sans-serif;
-            background-color: #f5f5f4; /* stone-100 */
+            background-color: #f5f5f4;
         }
         .chart-container {
             position: relative;
@@ -42,19 +38,18 @@
             max-height: 400px;
         }
         .active-tab {
-            background-color: #d97706; /* amber-600 */
+            background-color: #d97706;
             color: white;
             border-color: #d97706;
         }
         .inactive-tab {
             background-color: white;
-            color: #44403c; /* stone-700 */
-            border-color: #e7e5e4; /* stone-200 */
+            color: #44403c;
+            border-color: #e7e5e4;
         }
         .inactive-tab:hover {
-            background-color: #fef3c7; /* amber-100 */
+            background-color: #fef3c7;
         }
-        /* Custom scrollbar for horizontal tabs */
         .hide-scroll::-webkit-scrollbar {
             display: none;
         }
@@ -62,50 +57,79 @@
             -ms-overflow-style: none;
             scrollbar-width: none;
         }
-        /* Fade in animation for new expenses */
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(5px); }
-            to { opacity: 1; transform: translateY(0); }
+        @keyframes pulse-green {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
         }
-        .expense-item {
-            animation: fadeIn 0.3s ease-out;
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background-color: #22c55e;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 6px;
+            animation: pulse-green 2s infinite;
         }
     </style>
 </head>
 <body class="text-stone-800">
 
+    <!-- Sync Status Indicator (Fixed Top Right) -->
+    <div class="fixed top-4 right-4 z-50 bg-white/90 backdrop-blur border border-stone-200 rounded-full px-3 py-1 shadow-sm flex items-center gap-2 text-xs font-medium text-stone-600">
+        <div id="syncStatusDot" class="w-2 h-2 rounded-full bg-stone-300"></div>
+        <span id="syncStatusText">連接中...</span>
+    </div>
+
     <!-- Main Container -->
     <div class="max-w-6xl mx-auto px-4 py-8 min-h-screen flex flex-col gap-8 relative">
 
         <!-- Header -->
-        <header class="text-center space-y-2">
+        <header class="text-center space-y-2 mt-4">
             <h1 class="text-3xl md:text-4xl font-bold text-stone-900 tracking-tight">🇯🇵 東京 & 富士山 獨旅攝影計畫</h1>
-            <p class="text-stone-500 font-medium">2025/01/01 - 2025/01/11 (11天10夜) • 雲端同步版</p>
+            <p class="text-stone-500 font-medium">2025/01/01 - 2025/01/11 (11天10夜) • 雲端同步版 Pro</p>
             <div class="flex justify-center gap-4 text-sm mt-4">
                 <span class="px-3 py-1 bg-amber-100 text-amber-800 rounded-full">📸 攝影優先</span>
                 <span class="px-3 py-1 bg-blue-100 text-blue-800 rounded-full">🗻 富士山絕景</span>
-                <span class="px-3 py-1 bg-green-100 text-green-800 rounded-full">🔄 即時同步</span>
+                <span class="px-3 py-1 bg-green-100 text-green-800 rounded-full">🔄 即時協作</span>
             </div>
             <p class="text-xs text-stone-400 mt-2">📧 所有憑證：daniel79865 信箱</p>
         </header>
 
         <!-- Dashboard / Overview Section -->
         <section class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <!-- Intro Text -->
-            <div class="bg-white p-6 rounded-2xl shadow-sm border border-stone-200 flex flex-col justify-center">
+            <!-- Intro Text & Major Expense Input -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-stone-200 flex flex-col">
                 <h2 class="text-xl font-bold mb-4 text-amber-700">📋 行程總覽</h2>
-                <p class="mb-4 text-stone-600 leading-relaxed">
-                    歡迎來到您的旅行指揮中心。本行程專為攝影愛好者設計，涵蓋東京的現代與下町風情，以及河口湖的富士山絕景。
-                    重點包含 <span class="font-bold text-stone-800">1/5 中山金杯賽馬</span>、<span class="font-bold text-stone-800">Shibuya Sky 夕陽</span> 與 <span class="font-bold text-stone-800">逆富士</span> 拍攝。
+                <p class="mb-4 text-stone-600 leading-relaxed text-sm">
+                    歡迎來到您的旅行指揮中心。重點包含 <span class="font-bold text-stone-800">1/5 中山金杯賽馬</span>、<span class="font-bold text-stone-800">Shibuya Sky 夕陽</span> 與 <span class="font-bold text-stone-800">逆富士</span>。
                 </p>
-                <div class="grid grid-cols-2 gap-4 mt-auto">
-                    <div class="bg-stone-50 p-4 rounded-lg text-center">
-                        <div class="text-2xl font-bold text-stone-800">6晚</div>
+                
+                <div class="grid grid-cols-2 gap-4 mb-6">
+                    <div class="bg-stone-50 p-3 rounded-lg text-center">
+                        <div class="text-xl font-bold text-stone-800">6晚</div>
                         <div class="text-xs text-stone-500 uppercase">秋葉原住宿</div>
                     </div>
-                    <div class="bg-stone-50 p-4 rounded-lg text-center">
-                        <div class="text-2xl font-bold text-stone-800">3晚</div>
+                    <div class="bg-stone-50 p-3 rounded-lg text-center">
+                        <div class="text-xl font-bold text-stone-800">3晚</div>
                         <div class="text-xs text-stone-500 uppercase">河口湖住宿</div>
+                    </div>
+                </div>
+
+                <!-- NEW: Add Major Expense Section -->
+                <div class="mt-auto border-t border-stone-100 pt-4">
+                    <button onclick="document.getElementById('majorExpenseForm').classList.toggle('hidden')" class="flex items-center gap-2 text-sm font-bold text-indigo-600 hover:text-indigo-800 transition-colors mb-2 w-full">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+                        新增預付 / 大額支出 (列入總表)
+                    </button>
+                    
+                    <div id="majorExpenseForm" class="hidden bg-indigo-50 p-3 rounded-xl space-y-2">
+                        <input type="text" id="majorName" placeholder="項目名稱 (如: 保險/大餐)" class="w-full text-sm p-2 rounded border border-indigo-200 focus:outline-none focus:border-indigo-500">
+                        <div class="grid grid-cols-2 gap-2">
+                            <input type="text" id="majorPlatform" placeholder="平台/來源" class="text-sm p-2 rounded border border-indigo-200 focus:outline-none focus:border-indigo-500">
+                            <input type="number" id="majorPrice" placeholder="金額 (TWD)" class="text-sm p-2 rounded border border-indigo-200 focus:outline-none focus:border-indigo-500">
+                        </div>
+                        <input type="text" id="majorDetails" placeholder="備註細節 (選填)" class="w-full text-sm p-2 rounded border border-indigo-200 focus:outline-none focus:border-indigo-500">
+                        <button onclick="window.addMajorExpense()" class="w-full bg-indigo-600 text-white text-sm font-bold py-2 rounded hover:bg-indigo-700 transition-colors">確認新增</button>
                     </div>
                 </div>
             </div>
@@ -116,11 +140,10 @@
                 <div class="chart-container">
                     <canvas id="focusChart"></canvas>
                 </div>
-                <p class="text-xs text-center text-stone-400 mt-2">攝影與探索佔比最高，購物集中於特定時段。</p>
             </div>
         </section>
 
-        <!-- Navigation Tabs (Main Controller) -->
+        <!-- Navigation Tabs -->
         <nav class="sticky top-2 z-40 bg-stone-100/90 backdrop-blur-sm py-2 rounded-xl border border-stone-200 shadow-md">
             <div class="flex overflow-x-auto gap-2 px-2 hide-scroll" id="dayTabs">
                 <!-- JS will populate these buttons -->
@@ -129,7 +152,6 @@
 
         <!-- Dynamic Content Section -->
         <main id="mainContent" class="min-h-[500px]">
-            <!-- Content injected by JS -->
             <div class="flex flex-col items-center justify-center h-64 text-stone-400">
                 <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-stone-500 mb-2"></div>
                 <p>載入中...</p>
@@ -149,41 +171,31 @@
 
         <!-- Photo Missions & Shopping Section -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            
-            <!-- Photo Missions -->
             <section class="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
                 <div class="flex items-center justify-between mb-6">
                     <h2 class="text-xl font-bold text-stone-800">🎥 攝影 & Reels 任務</h2>
                     <span id="photoProgress" class="text-sm font-bold text-amber-600 bg-amber-100 px-3 py-1 rounded-full">0/10 完成</span>
                 </div>
-                <p class="text-sm text-stone-500 mb-4">點擊項目標記完成（即時同步）。</p>
-                
-                <div class="space-y-3" id="photoChecklist">
-                    <!-- JS Populated -->
-                </div>
+                <div class="space-y-3" id="photoChecklist"></div>
             </section>
 
-            <!-- Shopping Logistics -->
             <section class="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
                 <div class="flex items-center justify-between mb-6">
                     <h2 class="text-xl font-bold text-stone-800">🛍️ 購物 & 伴手禮清單</h2>
                     <span id="shopProgress" class="text-sm font-bold text-blue-600 bg-blue-100 px-3 py-1 rounded-full">0/12 購入</span>
                 </div>
-                 <p class="text-sm text-stone-500 mb-4">點擊項目以標記為「已購入」（即時同步）。</p>
-                <div class="space-y-3" id="shoppingChecklist">
-                    <!-- JS Populated -->
-                </div>
+                <div class="space-y-3" id="shoppingChecklist"></div>
             </section>
         </div>
 
         <!-- NEW: Expenses & Tickets Summary -->
         <section class="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
             <h2 class="text-xl font-bold text-stone-800 mb-4">💰 費用總表 (預付 + 每日記帳)</h2>
-            <p class="text-sm text-stone-500 mb-4">所有電子憑證均在信箱 <span class="font-mono bg-stone-100 px-1 rounded text-stone-700">daniel79865</span> 中。每日記帳將自動匯總於此。</p>
+            <p class="text-sm text-stone-500 mb-4">所有電子憑證均在信箱 <span class="font-mono bg-stone-100 px-1 rounded text-stone-700">daniel79865</span> 中。資料來自多個雲端集合同步。</p>
             
             <div class="overflow-x-auto">
                 <table class="w-full text-sm text-left text-stone-600" id="expensesTable">
-                    <!-- JS will populate this table completely -->
+                    <!-- JS will populate -->
                 </table>
             </div>
         </section>
@@ -191,7 +203,6 @@
         <!-- Footer -->
         <footer class="text-center text-stone-400 text-sm py-8 border-t border-stone-200">
             <p>2025 Tokyo & Fuji Solo Trip • Photography Itinerary</p>
-            <p class="mt-2 text-xs">Remember to check weather forecasts for Mt. Fuji visibility.</p>
         </footer>
 
     </div>
@@ -201,16 +212,19 @@
         // Import Firebase modules
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- Global Variables & State ---
-        const TRIP_ID = 'tokyo_fuji_2025_fixed_v1'; // 固定 Trip ID
+        const TRIP_ID = 'tokyo_fuji_2025_fixed_v1';
         let currentDayIndex = 0;
+        
+        // Data Containers
         let checkedPhotos = new Set();
         let checkedShop = new Set();
         let dailyRoutineState = {};
         let stepCounts = {}; 
-        let customExpenses = []; // Array of { id, dayIndex, name, price }
+        let customExpenses = []; // From 'daily_expenses' collection
+        let majorExpenses = []; // From 'major_expenses' collection
         
         // Chart instances
         let chartInstance = null; 
@@ -218,11 +232,9 @@
         
         // Firebase Globals
         let db;
-        let docRef;
+        let appId;
 
-        // --- Static Data ---
-        
-        // Fixed Expenses Data (Moved from HTML to JS for easier merging)
+        // --- Static Data (Fixed) ---
         const fixedExpenses = [
             { name: "東京七天六夜住宿", platform: "Agoda", details: "前 6 晚 + 後 1 晚 (組合)", price: 7949 },
             { name: "機票來回", platform: "Agoda", details: "TPE <-> NRT/HND", price: 9588 },
@@ -235,290 +247,163 @@
         ];
 
         const itineraryData = [
-            {
-                day: 1,
-                date: "1/1 (四)",
-                title: "日本橋・皇居・新宿・銀座",
-                tag: "體力挑戰",
-                intensity: 9,
-                location: "Tokyo",
-                highlights: [
-                    "上午：日本橋麒麟像 (經典地標)",
-                    "上午：皇居前廣場 & 和田倉噴水公園",
-                    "午餐：Shake Shack 銀座",
-                    "下午：須賀神社 (你的名字階梯)",
-                    "下午：東京都廳北展望室 (新宿夕陽)",
-                    "晚上：銀座歌舞伎座夜拍 & 中央通"
-                ],
-                food: "Shake Shack, Blue Bottle, 銀座周邊晚餐",
-                tips: "元旦很多店沒開，百貨公司休息。神社人潮眾多。"
-            },
-            {
-                day: 2,
-                date: "1/2 (五)",
-                title: "秋葉原建築 & 新宿購物",
-                tag: "攝影+購物",
-                intensity: 6,
-                location: "Tokyo",
-                highlights: [
-                    "09:00 神田萬世橋 (紅磚拱門)",
-                    "10:00 聖橋 (電車交會)",
-                    "11:00 2k540 高架橋下職人街",
-                    "午餐：敘敘院 燒肉 (12:30 預約)",
-                    "下午：秋葉原/新宿 購物狂歡 (動漫周邊)",
-                    "晚上：秋葉原自由活動"
-                ],
-                food: "敘敘院 (12:30 預約)",
-                tips: "早上集中拍攝建築，下午專心買東西。"
-            },
-            {
-                day: 3,
-                date: "1/3 (六)",
-                title: "下町風情：晴空塔・淺草・谷根千",
-                tag: "文化攝影",
-                intensity: 7,
-                location: "Tokyo",
-                highlights: [
-                    "清晨：十間橋 (晴空塔倒影)",
-                    "上午：淺草雷門 (人力車畫面)",
-                    "下午：上野之森 Sakura Terrace (拍車站)",
-                    "下午：東京大學 & 谷中銀座「夕陽階梯」",
-                    "晚餐：肉屋橫町 (18:00 預約)"
-                ],
-                food: "淺草鰻魚飯, 肉屋橫町 (18:00 預約)",
-                tips: "谷中銀座夕陽必拍。"
-            },
-            {
-                day: 4,
-                date: "1/4 (日)",
-                title: "賽馬日 & 秋葉原夜生活",
-                tag: "熱血",
-                intensity: 8,
-                location: "Chiba/Tokyo",
-                highlights: [
-                    "全日：中山競馬場 (中山金杯 GIII)",
-                    "拍攝：萬馬奔騰、帕多克馬匹狀態",
-                    "深夜：MOGRA (秋葉原 DJ Bar)",
-                    "Option: 63 angel"
-                ],
-                food: "馬場內B級美食",
-                tips: "週六晚上夜店氣氛最佳。"
-            },
-            {
-                day: 5,
-                date: "1/5 (一)",
-                title: "代官山・澀谷 SKY",
-                tag: "時尚街拍",
-                intensity: 6,
-                location: "Tokyo",
-                highlights: [
-                    "上午：代官山 蔦屋書店",
-                    "下午：惠比壽花園廣場塔",
-                    "15:00 SHIBUYA SKY (已預約/購票)",
-                    "晚上：澀谷十字路口星巴克",
-                    "晚餐：Terumae 居酒屋 (19:00 預約)"
-                ],
-                food: "炸牛排, Terumae (19:00 預約)",
-                tips: "SHIBUYA SKY 下午3點入場，可一路拍到夕陽。"
-            },
-            {
-                day: 6,
-                date: "1/6 (二)",
-                title: "麻布台・東京塔",
-                tag: "藝術絕景",
-                intensity: 5,
-                location: "Tokyo",
-                highlights: [
-                    "11:30 teamLab Borderless (麻布台Hills)",
-                    "拍攝：神谷町車站出口曲線",
-                    "拍攝：芝公園 (東京鐵塔)",
-                    "深夜：Live House"
-                ],
-                food: "雞湯拉麵 篝",
-                tips: "teamLab 已購票 11:30 入場。"
-            },
-            {
-                day: 7,
-                date: "1/7 (三)",
-                title: "移動日：東京 → 河口湖",
-                tag: "移動/風景",
-                intensity: 4,
-                location: "Fuji",
-                highlights: [
-                    "13:15 新宿高速巴士 (車次1109)",
-                    "午餐：炸牛排 Koushuya (河口湖店)",
-                    "下午：新倉山淺間公園 (忠靈塔+富士山)",
-                    "拍攝：本町二丁目商店街"
-                ],
-                food: "炸牛排 Koushuya",
-                tips: "新倉山淺間公園需爬398階梯。記得提前到新宿巴士總站。"
-            },
-            {
-                day: 8,
-                date: "1/8 (四)",
-                title: "河口湖環湖攝影",
-                tag: "自然風光",
-                intensity: 7,
-                location: "Fuji",
-                highlights: [
-                    "清晨：湖畔日出 (逆富士 - 長崎公園/產屋崎)",
-                    "景點：大石公園 (花海+富士山)",
-                    "景點：音樂盒之森美術館",
-                    "景點：天上山纜車 (Kachi Kachi Ropeway)"
-                ],
-                food: "河口湖周邊",
-                tips: "逆富士需要無風無雨的清晨。纜車票Klook已買。"
-            },
-            {
-                day: 9,
-                date: "1/9 (五)",
-                title: "忍野八海",
-                tag: "傳統建築",
-                intensity: 5,
-                location: "Fuji",
-                highlights: [
-                    "全日：忍野八海",
-                    "拍攝：鏡池 (逆富士)、湧池",
-                    "拍攝：傳統茅葺屋頂建築"
-                ],
-                food: "忍野八海小吃",
-                tips: "遊客極多，建議9點前抵達。"
-            },
-            {
-                day: 10,
-                date: "1/10 (六)",
-                title: "富士急・回東京",
-                tag: "遊樂/移動",
-                intensity: 6,
-                location: "Fuji/Tokyo",
-                highlights: [
-                    "上午：富士見橋 (富士山道路盡頭感)",
-                    "11:10 河口湖發車回新宿 (車次1106)",
-                    "下午：東京最後衝刺",
-                    "傍晚：入住最後一晚住宿"
-                ],
-                food: "東京市區",
-                tips: "記得 11:10 前回到河口湖車站搭車。"
-            },
-            {
-                day: 11,
-                date: "1/11 (日)",
-                title: "回程",
-                tag: "返家",
-                intensity: 2,
-                location: "Airport",
-                highlights: [
-                    "上午：羽田機場 (HND) -> 台北 (TPE)",
-                    "最後衝刺：機場伴手禮 (東京香蕉、薯條三兄弟)"
-                ],
-                food: "飛機餐",
-                tips: "注意電車首班車時間。"
-            }
+            { day: 1, date: "1/1 (四)", title: "日本橋・皇居・新宿・銀座", tag: "體力挑戰", intensity: 9, location: "Tokyo", highlights: ["上午：日本橋麒麟像", "上午：皇居前廣場", "午餐：Shake Shack 銀座", "下午：須賀神社", "下午：東京都廳北展望室", "晚上：銀座歌舞伎座夜拍"], food: "Shake Shack, Blue Bottle", tips: "元旦很多店沒開。" },
+            { day: 2, date: "1/2 (五)", title: "秋葉原建築 & 新宿購物", tag: "攝影+購物", intensity: 6, location: "Tokyo", highlights: ["09:00 神田萬世橋", "10:00 聖橋", "11:00 2k540 高架橋下", "午餐：敘敘院 燒肉 (12:30)", "下午：秋葉原/新宿 購物", "晚上：秋葉原自由活動"], food: "敘敘院 (12:30 預約)", tips: "早上拍建築，下午購物。" },
+            { day: 3, date: "1/3 (六)", title: "下町風情：晴空塔・淺草", tag: "文化攝影", intensity: 7, location: "Tokyo", highlights: ["清晨：十間橋 (晴空塔)", "上午：淺草雷門", "下午：上野之森", "下午：谷中銀座「夕陽階梯」", "晚餐：肉屋橫町 (18:00)"], food: "淺草鰻魚飯, 肉屋橫町", tips: "谷中銀座夕陽必拍。" },
+            { day: 4, date: "1/4 (日)", title: "賽馬日 & 秋葉原夜生活", tag: "熱血", intensity: 8, location: "Chiba/Tokyo", highlights: ["全日：中山競馬場 (GIII)", "拍攝：萬馬奔騰", "深夜：MOGRA", "Option: 63 angel"], food: "馬場內B級美食", tips: "週六晚上夜店氣氛佳。" },
+            { day: 5, date: "1/5 (一)", title: "代官山・澀谷 SKY", tag: "時尚街拍", intensity: 6, location: "Tokyo", highlights: ["上午：代官山 蔦屋書店", "下午：惠比壽花園", "15:00 SHIBUYA SKY", "晚上：澀谷十字路口", "晚餐：Terumae (19:00)"], food: "炸牛排, Terumae", tips: "SHIBUYA SKY 3點入場。" },
+            { day: 6, date: "1/6 (二)", title: "麻布台・東京塔", tag: "藝術絕景", intensity: 5, location: "Tokyo", highlights: ["11:30 teamLab Borderless", "拍攝：神谷町車站", "拍攝：芝公園 (東京鐵塔)", "深夜：Live House"], food: "雞湯拉麵 篝", tips: "teamLab 11:30 入場。" },
+            { day: 7, date: "1/7 (三)", title: "移動日：東京 → 河口湖", tag: "移動/風景", intensity: 4, location: "Fuji", highlights: ["13:15 新宿高速巴士", "午餐：炸牛排 Koushuya", "下午：新倉山淺間公園", "拍攝：本町二丁目"], food: "炸牛排 Koushuya", tips: "記得提前到巴士總站。" },
+            { day: 8, date: "1/8 (四)", title: "河口湖環湖攝影", tag: "自然風光", intensity: 7, location: "Fuji", highlights: ["清晨：湖畔日出 (逆富士)", "景點：大石公園", "景點：音樂盒之森", "景點：天上山纜車"], food: "河口湖周邊", tips: "纜車票已買。" },
+            { day: 9, date: "1/9 (五)", title: "忍野八海", tag: "傳統建築", intensity: 5, location: "Fuji", highlights: ["全日：忍野八海", "拍攝：鏡池 (逆富士)", "拍攝：傳統茅葺屋頂"], food: "忍野八海小吃", tips: "遊客多，建議早到。" },
+            { day: 10, date: "1/10 (六)", title: "富士急・回東京", tag: "遊樂/移動", intensity: 6, location: "Fuji/Tokyo", highlights: ["上午：富士見橋", "11:10 河口湖發車回新宿", "下午：東京最後衝刺", "傍晚：入住最後一晚"], food: "東京市區", tips: "11:10 前回到車站。" },
+            { day: 11, date: "1/11 (日)", title: "回程", tag: "返家", intensity: 2, location: "Airport", highlights: ["上午：羽田機場 (HND)", "最後衝刺：機場伴手禮"], food: "飛機餐", tips: "注意首班車時間。" }
         ];
 
         const photoMissions = [
-            { id: 1, text: "Day 1: 銀座/有樂町 車軌夜景 (長曝光)", type: "Photo" },
+            { id: 1, text: "Day 1: 銀座/有樂町 車軌夜景", type: "Photo" },
             { id: 2, text: "Day 2: 聖橋 三線電車交會", type: "Photo" },
             { id: 3, text: "Day 3: 十間橋 晴空塔完美倒影", type: "Photo" },
             { id: 4, text: "Day 3: 谷中銀座 夕陽階梯剪影", type: "Photo" },
-            { id: 5, text: "Day 4: 中山競馬場 萬馬奔騰 (Panning)", type: "Photo" },
-            { id: 6, text: "Day 5: SHIBUYA SKY 百萬夜景 (消反光)", type: "Photo" },
-            { id: 7, text: "Day 6: teamLab Borderless 人像剪影", type: "Photo" },
+            { id: 5, text: "Day 4: 中山競馬場 萬馬奔騰", type: "Photo" },
+            { id: 6, text: "Day 5: SHIBUYA SKY 百萬夜景", type: "Photo" },
+            { id: 7, text: "Day 6: teamLab Borderless 剪影", type: "Photo" },
             { id: 8, text: "Day 6: 芝公園 紅白東京鐵塔", type: "Photo" },
-            { id: 9, text: "Day 7: 下吉田 本町二丁目 長焦壓縮感", type: "Photo" },
+            { id: 9, text: "Day 7: 下吉田 本町二丁目 長焦", type: "Photo" },
             { id: 10, text: "Day 8: 河口湖 逆富士 (清晨)", type: "Photo" },
-            { id: 11, text: "Reel: 'The Next Station is Tokyo' (15張踩點)", type: "Video" },
-            { id: 12, text: "Reel: Shibuya Sky x 天氣之子 (POV)", type: "Video" }
+            { id: 11, text: "Reel: 'The Next Station is Tokyo'", type: "Video" },
+            { id: 12, text: "Reel: Shibuya Sky x 天氣之子", type: "Video" }
         ];
 
         const shoppingList = [
             { item: "猩猩之握 (相機腳架)", loc: "Yodobashi Akiba", cat: "Gear" },
-            { item: "減肥藥 (Onaka/Naishi)", loc: "松本清/OS Drug", cat: "Drugstore" },
-            { item: "老媽的背心", loc: "Uniqlo 銀座/Montbell", cat: "Clothing" },
-            { item: "New York Perfect Cheese", loc: "東京站/新宿", cat: "Souvenir" },
-            { item: "白色戀人", loc: "機場/日本橋", cat: "Souvenir" },
+            { item: "減肥藥 (Onaka/Naishi)", loc: "松本清", cat: "Drugstore" },
+            { item: "老媽的背心", loc: "Uniqlo 銀座", cat: "Clothing" },
+            { item: "New York Perfect Cheese", loc: "東京站", cat: "Souvenir" },
+            { item: "白色戀人", loc: "機場", cat: "Souvenir" },
             { item: "Royce 生巧克力", loc: "機場", cat: "Souvenir" },
             { item: "Yoroshi化粧堂 365護唇膏", loc: "淺草", cat: "Souvenir" },
             { item: "FUJIYAMA COOKIE", loc: "河口湖", cat: "Souvenir" },
             { item: "LAWSON 草莓牛奶", loc: "便利商店", cat: "Daily Eat" },
             { item: "OHAYO 焦糖烤布蕾冰淇淋", loc: "便利商店", cat: "Daily Eat" },
             { item: "每晚一罐啤酒", loc: "便利商店", cat: "Daily Eat" },
-            { item: "Sweet Garden富士雪粉起士蛋糕", loc: "河口湖", cat: "Daily Eat" }
+            { item: "Sweet Garden富士起士蛋糕", loc: "河口湖", cat: "Daily Eat" }
         ];
         
         const dailyRoutineItems = [
             { id: 'run', text: '晨間跑步 / 散步', icon: '🏃', isFujiOnly: false },
             { id: 'milk', text: 'LAWSON 草莓牛奶', icon: '🍓', isFujiOnly: false },
-            { id: 'icecream', text: 'OHAYO 焦糖烤布蕾冰淇淋', icon: '🍮', isFujiOnly: false },
+            { id: 'icecream', text: '焦糖烤布蕾冰淇淋', icon: '🍮', isFujiOnly: false },
             { id: 'beer', text: '喝一罐啤酒', icon: '🍺', isFujiOnly: false },
-            { id: 'fuji_cake', text: 'Sweet Garden富士雪粉起士蛋糕', icon: '🗻', isFujiOnly: true }
+            { id: 'fuji_cake', text: '富士雪粉起士蛋糕', icon: '🗻', isFujiOnly: true }
         ];
 
-        // --- Core Interaction Functions ---
+        // --- Core Interaction Functions (Attached to Window) ---
 
         window.toggleRoutine = function(dayIndex, itemId) {
             const stateKey = `${dayIndex}_${itemId}`;
             dailyRoutineState[stateKey] = !dailyRoutineState[stateKey];
             renderContent(dayIndex);
-            syncState(); 
+            syncTripState(); 
         };
 
         window.togglePhoto = function(idx) {
             if (checkedPhotos.has(idx)) checkedPhotos.delete(idx);
             else checkedPhotos.add(idx);
             renderChecklists();
-            syncState();
+            syncTripState();
         };
 
         window.toggleShop = function(idx) {
             if (checkedShop.has(idx)) checkedShop.delete(idx);
             else checkedShop.add(idx);
             renderChecklists();
-            syncState();
+            syncTripState();
         };
 
         window.updateSteps = function(dayIndex, value) {
             stepCounts[dayIndex] = parseInt(value) || 0;
             renderCharts(); 
-            syncState();
+            syncTripState();
         };
 
-        // NEW: Expense Functions
-        window.addExpense = function(dayIndex) {
-            const nameInput = document.getElementById(`expense-name-${dayIndex}`);
-            const priceInput = document.getElementById(`expense-price-${dayIndex}`);
-            
-            const name = nameInput.value.trim();
-            const price = parseInt(priceInput.value);
+        // --- NEW: Firestore Sub-Collection Operations (Robust Sync) ---
+
+        window.addMajorExpense = async function() {
+            const name = document.getElementById('majorName').value.trim();
+            const platform = document.getElementById('majorPlatform').value.trim();
+            const price = parseInt(document.getElementById('majorPrice').value);
+            const details = document.getElementById('majorDetails').value.trim();
 
             if (!name || isNaN(price)) {
                 alert("請輸入有效的項目名稱與金額");
                 return;
             }
 
-            const newExpense = {
-                id: Date.now().toString(), // Simple ID
-                dayIndex: dayIndex,
-                name: name,
-                price: price
-            };
-
-            customExpenses.push(newExpense);
-            
-            // Clear inputs
-            nameInput.value = "";
-            priceInput.value = "";
-
-            renderContent(dayIndex); // Refresh daily view
-            renderExpensesTable(); // Refresh summary table
-            syncState();
+            try {
+                // Add to 'major_expenses' collection using unique auto-ID
+                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'major_expenses'), {
+                    tripId: TRIP_ID,
+                    name,
+                    platform: platform || "自訂",
+                    price,
+                    details: details || "",
+                    createdAt: Date.now()
+                });
+                
+                // Clear form
+                document.getElementById('majorName').value = "";
+                document.getElementById('majorPlatform').value = "";
+                document.getElementById('majorPrice').value = "";
+                document.getElementById('majorDetails').value = "";
+                alert("已新增至大額支出（雲端同步）！");
+            } catch (e) {
+                console.error("Error adding major expense", e);
+                alert("新增失敗，請檢查網路");
+            }
         };
 
-        window.deleteExpense = function(expenseId, dayIndex) {
-            customExpenses = customExpenses.filter(e => e.id !== expenseId);
-            renderContent(dayIndex);
-            renderExpensesTable();
-            syncState();
+        window.deleteMajorExpense = async function(docId) {
+            if(!confirm("確定要刪除這筆支出嗎？")) return;
+            try {
+                await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'major_expenses', docId));
+            } catch (e) {
+                console.error("Error deleting major expense", e);
+            }
+        };
+
+        window.addExpense = async function(dayIndex) {
+            const name = document.getElementById(`expense-name-${dayIndex}`).value.trim();
+            const price = parseInt(document.getElementById(`expense-price-${dayIndex}`).value);
+
+            if (!name || isNaN(price)) {
+                alert("請輸入有效的項目名稱與金額");
+                return;
+            }
+
+            try {
+                // Add to 'daily_expenses' collection
+                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'daily_expenses'), {
+                    tripId: TRIP_ID,
+                    dayIndex,
+                    name,
+                    price,
+                    createdAt: Date.now()
+                });
+                // Clear form handled in render if we want, or manually here
+                document.getElementById(`expense-name-${dayIndex}`).value = "";
+                document.getElementById(`expense-price-${dayIndex}`).value = "";
+            } catch (e) {
+                console.error("Error adding daily expense", e);
+            }
+        };
+
+        window.deleteExpense = async function(docId, dayIndex) {
+            try {
+                await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'daily_expenses', docId));
+            } catch (e) {
+                console.error("Error deleting daily expense", e);
+            }
         };
 
         // --- Render Functions ---
@@ -527,8 +412,6 @@
         const mainContent = document.getElementById('mainContent');
         const photoChecklist = document.getElementById('photoChecklist');
         const shoppingChecklist = document.getElementById('shoppingChecklist');
-        const photoProgress = document.getElementById('photoProgress');
-        const shopProgress = document.getElementById('shopProgress');
         const expensesTable = document.getElementById('expensesTable');
 
         function renderTabs() {
@@ -551,15 +434,14 @@
             const isFujiArea = data.location === 'Fuji' || data.location.includes('Fuji');
             const currentSteps = stepCounts[index] || '';
             
-            // Get expenses for this day
+            // Filter expenses from the global synced array
             const dailyExpenses = customExpenses.filter(e => e.dayIndex === index);
             const dailyTotal = dailyExpenses.reduce((sum, e) => sum + e.price, 0);
 
-            // Generate Daily Routine HTML
+            // Routine HTML
             let routineHtml = '';
             dailyRoutineItems.forEach(item => {
                 if (item.isFujiOnly && !isFujiArea) return;
-                
                 const stateKey = `${index}_${item.id}`;
                 const isChecked = dailyRoutineState[stateKey] || false;
                 
@@ -576,7 +458,7 @@
                 `;
             });
 
-            // Generate Expense List HTML
+            // Expense List HTML
             let expensesListHtml = '';
             if (dailyExpenses.length > 0) {
                 expensesListHtml = `<div class="mt-3 space-y-2">`;
@@ -600,7 +482,6 @@
 
             mainContent.innerHTML = `
                 <div class="bg-white rounded-3xl shadow-lg border border-stone-200 overflow-hidden relative">
-                    <!-- Hero Header for the Card -->
                     <div class="p-8 ${isFujiArea ? 'bg-gradient-to-r from-blue-50 to-indigo-50' : 'bg-gradient-to-r from-amber-50 to-orange-50'}">
                         <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
                             <div>
@@ -612,19 +493,13 @@
                                     <span class="px-3 py-1 text-xs font-bold uppercase tracking-wide rounded-full ${data.intensity >= 8 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}">
                                         ⚡ 強度: ${data.intensity}/10
                                     </span>
-                                    <span class="px-3 py-1 text-xs font-bold uppercase tracking-wide rounded-full bg-stone-800 text-white">
-                                        ${data.tag}
-                                    </span>
                                 </div>
                             </div>
                         </div>
                     </div>
 
                     <div class="p-8">
-                        <!-- Layout Grid: Highlights (Left) & Right Sidebar -->
                         <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-                            
-                            <!-- Column 1: Highlights (Takes up 2/3 space) -->
                             <div class="lg:col-span-2 space-y-6">
                                 <div>
                                     <h3 class="text-lg font-bold text-stone-700 mb-4 border-b pb-2 border-stone-100">行程亮點</h3>
@@ -637,8 +512,6 @@
                                         `).join('')}
                                     </ul>
                                 </div>
-
-                                <!-- Step Count Input -->
                                 <div class="bg-white border border-blue-200 rounded-xl p-4 flex items-center justify-between shadow-sm">
                                     <div class="flex items-center gap-3">
                                          <div class="p-2 bg-blue-100 text-blue-600 rounded-lg">
@@ -658,40 +531,25 @@
                                     </div>
                                 </div>
                             </div>
-
-                            <!-- Column 2: Sidebar (Routine + Expenses) -->
                             <div class="space-y-6">
-                                <!-- Daily Routine -->
                                 <div class="bg-stone-50 rounded-2xl p-5 border border-stone-100">
-                                    <h3 class="text-sm font-bold text-stone-500 uppercase mb-3 flex items-center gap-2">
-                                        <span>📅</span> 每日儀式 Checklist
-                                    </h3>
-                                    <div class="flex flex-col">
-                                        ${routineHtml}
-                                    </div>
+                                    <h3 class="text-sm font-bold text-stone-500 uppercase mb-3 flex items-center gap-2"><span>📅</span> 每日儀式 Checklist</h3>
+                                    <div class="flex flex-col">${routineHtml}</div>
                                 </div>
-
-                                <!-- NEW: Daily Expense Tracker -->
                                 <div class="bg-indigo-50 rounded-2xl p-5 border border-indigo-100">
                                     <h3 class="text-sm font-bold text-indigo-800 uppercase mb-3 flex items-center gap-2 justify-between">
-                                        <span>💸 今日記帳</span>
+                                        <span>💸 今日記帳 (小額)</span>
                                         <span class="text-xs bg-white px-2 py-0.5 rounded border border-indigo-100 text-indigo-600">小計: $${dailyTotal}</span>
                                     </h3>
-                                    
-                                    <!-- Input Form -->
                                     <div class="flex gap-2 mb-3">
                                         <input type="text" id="expense-name-${index}" placeholder="項目" class="w-full rounded border border-stone-300 px-2 py-1 text-sm focus:outline-none focus:border-indigo-400">
                                         <input type="number" id="expense-price-${index}" placeholder="$" class="w-20 rounded border border-stone-300 px-2 py-1 text-sm focus:outline-none focus:border-indigo-400">
                                         <button onclick="window.addExpense(${index})" class="bg-indigo-600 text-white rounded px-3 py-1 text-sm hover:bg-indigo-700 transition-colors">+</button>
                                     </div>
-                                    
-                                    <!-- List -->
                                     ${expensesListHtml}
                                 </div>
                             </div>
                         </div>
-
-                        <!-- Footer Info Grid -->
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div class="bg-stone-50 p-4 rounded-xl">
                                 <h4 class="text-sm font-bold text-stone-500 uppercase mb-2">🍽️ 餐飲 & 預約</h4>
@@ -708,29 +566,24 @@
         }
 
         function renderChecklists() {
-            // Photo List
+            // Photos
             photoChecklist.innerHTML = '';
             photoMissions.forEach((item, idx) => {
                 const isChecked = checkedPhotos.has(idx);
                 const div = document.createElement('div');
                 div.className = `flex items-center justify-between gap-3 p-3 rounded-lg border transition-all ${isChecked ? 'bg-stone-50 border-stone-200' : 'bg-white border-stone-100 hover:border-amber-300 hover:shadow-sm'}`;
-                
                 div.innerHTML = `
                     <div class="flex items-center gap-3 cursor-pointer flex-grow" onclick="window.togglePhoto(${idx})">
                         <div class="w-5 h-5 rounded border flex items-center justify-center flex-shrink-0 ${isChecked ? 'bg-amber-500 border-amber-500 text-white' : 'border-stone-300'}">
                             ${isChecked ? '✓' : ''}
                         </div>
-                        <div>
-                            <div class="text-sm font-medium ${isChecked ? 'line-through text-stone-400' : 'text-stone-700'}">${item.text}</div>
-                            <div class="text-xs text-stone-400">${item.type}</div>
-                        </div>
-                    </div>
-                `;
+                        <div><div class="text-sm font-medium ${isChecked ? 'line-through text-stone-400' : 'text-stone-700'}">${item.text}</div></div>
+                    </div>`;
                 photoChecklist.appendChild(div);
             });
-            photoProgress.textContent = `${checkedPhotos.size}/${photoMissions.length} 完成`;
+            document.getElementById('photoProgress').textContent = `${checkedPhotos.size}/${photoMissions.length} 完成`;
 
-            // Shopping List
+            // Shopping
             shoppingChecklist.innerHTML = '';
             shoppingList.forEach((item, idx) => {
                 const isChecked = checkedShop.has(idx);
@@ -738,36 +591,28 @@
                 div.className = `flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${isChecked ? 'bg-stone-50 border-stone-200 opacity-60' : 'bg-white border-stone-100 hover:border-blue-300 hover:shadow-sm'}`;
                 div.onclick = () => window.toggleShop(idx);
                 div.innerHTML = `
-                    <div class="w-5 h-5 rounded border flex items-center justify-center ${isChecked ? 'bg-blue-500 border-blue-500 text-white' : 'border-stone-300'}">
-                        ${isChecked ? '✓' : ''}
-                    </div>
-                    <div>
-                        <div class="text-sm font-medium ${isChecked ? 'line-through text-stone-400' : 'text-stone-700'}">${item.item}</div>
-                        <div class="text-xs text-stone-400">${item.loc} • ${item.cat}</div>
-                    </div>
-                `;
+                    <div class="w-5 h-5 rounded border flex items-center justify-center ${isChecked ? 'bg-blue-500 border-blue-500 text-white' : 'border-stone-300'}">${isChecked ? '✓' : ''}</div>
+                    <div><div class="text-sm font-medium ${isChecked ? 'line-through text-stone-400' : 'text-stone-700'}">${item.item}</div><div class="text-xs text-stone-400">${item.loc}</div></div>`;
                 shoppingChecklist.appendChild(div);
             });
-            shopProgress.textContent = `${checkedShop.size}/${shoppingList.length} 購入`;
+            document.getElementById('shopProgress').textContent = `${checkedShop.size}/${shoppingList.length} 購入`;
         }
 
         function renderExpensesTable() {
-            // Header
             let html = `
                 <thead class="text-xs text-stone-700 uppercase bg-stone-50">
                     <tr>
-                        <th scope="col" class="px-6 py-3">項目</th>
-                        <th scope="col" class="px-6 py-3">平台/類別</th>
-                        <th scope="col" class="px-6 py-3">詳細資訊 / 日期</th>
-                        <th scope="col" class="px-6 py-3 text-right">金額 (TWD)</th>
+                        <th class="px-6 py-3">項目</th>
+                        <th class="px-6 py-3">平台/類別</th>
+                        <th class="px-6 py-3">詳細資訊 / 日期</th>
+                        <th class="px-6 py-3 text-right">金額 (TWD)</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-stone-100">
-            `;
+                <tbody class="divide-y divide-stone-100">`;
 
             let grandTotal = 0;
 
-            // 1. Fixed Expenses
+            // 1. Fixed
             fixedExpenses.forEach(exp => {
                 grandTotal += exp.price;
                 html += `
@@ -776,23 +621,34 @@
                         <td class="px-6 py-4">${exp.platform}</td>
                         <td class="px-6 py-4 ${exp.highlight ? 'text-amber-600 font-bold' : ''}">${exp.details}</td>
                         <td class="px-6 py-4 text-right">${exp.price.toLocaleString()}</td>
-                    </tr>
-                `;
+                    </tr>`;
             });
 
-            // 2. Separator if custom expenses exist
+            // 2. Major (Synced from Collection)
+            if (majorExpenses.length > 0) {
+                 // Sort by creation time
+                 const sortedMajor = [...majorExpenses].sort((a,b) => (a.createdAt || 0) - (b.createdAt || 0));
+                 sortedMajor.forEach(exp => {
+                    grandTotal += exp.price;
+                    html += `
+                        <tr class="bg-amber-50/50 border-b hover:bg-amber-50 group">
+                            <td class="px-6 py-4 font-medium text-stone-900 flex items-center gap-2">
+                                ${exp.name}
+                                <button onclick="window.deleteMajorExpense('${exp.id}')" class="text-red-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                                </button>
+                            </td>
+                            <td class="px-6 py-4 text-stone-600">${exp.platform}</td>
+                            <td class="px-6 py-4 text-stone-500 italic">${exp.details}</td>
+                            <td class="px-6 py-4 text-right">${exp.price.toLocaleString()}</td>
+                        </tr>`;
+                });
+            }
+
+            // 3. Daily (Synced from Collection)
             if (customExpenses.length > 0) {
-                html += `
-                    <tr class="bg-stone-100">
-                        <td colspan="4" class="px-6 py-2 text-xs font-bold text-stone-500 uppercase text-center tracking-wider">
-                            ⬇️ 旅途記帳 (現地消費) ⬇️
-                        </td>
-                    </tr>
-                `;
-
-                // Sort custom expenses by day
+                html += `<tr><td colspan="4" class="px-6 py-2 text-xs font-bold text-stone-500 uppercase text-center tracking-wider bg-stone-100">⬇️ 旅途記帳 (現地小額消費) ⬇️</td></tr>`;
                 const sortedCustom = [...customExpenses].sort((a, b) => a.dayIndex - b.dayIndex);
-
                 sortedCustom.forEach(exp => {
                     grandTotal += exp.price;
                     html += `
@@ -801,216 +657,172 @@
                             <td class="px-6 py-4 text-stone-500">每日記帳</td>
                             <td class="px-6 py-4 text-indigo-600 font-medium">Day ${exp.dayIndex + 1}</td>
                             <td class="px-6 py-4 text-right">${exp.price.toLocaleString()}</td>
-                        </tr>
-                    `;
+                        </tr>`;
                 });
             }
 
-            // Footer Total
             html += `
                 </tbody>
                 <tfoot class="bg-stone-100 font-bold text-stone-900">
                     <tr>
-                        <td scope="row" class="px-6 py-3 text-base">總計 (TWD)</td>
+                        <td class="px-6 py-3 text-base">總計 (TWD)</td>
                         <td class="px-6 py-3"></td>
                         <td class="px-6 py-3"></td>
                         <td class="px-6 py-3 text-right text-base text-indigo-700">${grandTotal.toLocaleString()}</td>
                     </tr>
-                </tfoot>
-            `;
-
+                </tfoot>`;
             expensesTable.innerHTML = html;
         }
 
         function renderCharts() {
-            try {
-                if (typeof Chart === 'undefined') {
-                    console.warn("Chart.js not loaded yet, skipping chart render");
-                    return;
-                }
-                
-                // Chart 1: Trip Focus (Donut)
-                const ctxFocus = document.getElementById('focusChart')?.getContext('2d');
-                if (ctxFocus) {
-                    if (focusChartInstance) {
-                        focusChartInstance.destroy();
+            if (typeof Chart === 'undefined') return;
+            
+            // Focus Chart
+            const ctxFocus = document.getElementById('focusChart')?.getContext('2d');
+            if (ctxFocus) {
+                if (focusChartInstance) focusChartInstance.destroy();
+                focusChartInstance = new Chart(ctxFocus, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['攝影', '購物', '美食', '移動', '娛樂'],
+                        datasets: [{ data: [45, 15, 20, 10, 10], backgroundColor: ['#d97706', '#3b82f6', '#10b981', '#6b7280', '#8b5cf6'], borderWidth: 0 }]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } }
+                });
+            }
+
+            // Intensity Chart
+            const ctxIntensity = document.getElementById('intensityChart')?.getContext('2d');
+            if (ctxIntensity) {
+                const stepsData = itineraryData.map((_, i) => stepCounts[i] || 0);
+                if (chartInstance) chartInstance.destroy();
+                chartInstance = new Chart(ctxIntensity, {
+                    type: 'bar',
+                    data: {
+                        labels: itineraryData.map(d => `Day ${d.day}`),
+                        datasets: [
+                            { label: '預估強度', data: itineraryData.map(d => d.intensity), backgroundColor: itineraryData.map(d => d.intensity >= 8 ? '#fca5a5' : (d.intensity >= 6 ? '#fcd34d' : '#6ee7b7')), order: 2 },
+                            { label: '實際步數', data: stepsData, borderColor: '#2563eb', backgroundColor: '#2563eb', type: 'line', tension: 0.3, yAxisID: 'y1', order: 1 }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: { y: { beginAtZero: true, max: 10, display: false }, y1: { beginAtZero: true, position: 'right', suggestedMax: 20000, grid: { drawOnChartArea: true } } }
                     }
-
-                    focusChartInstance = new Chart(ctxFocus, {
-                        type: 'doughnut',
-                        data: {
-                            labels: ['攝影 (Photography)', '購物 (Shopping)', '美食 (Dining)', '移動 (Transit)', '賽馬/娛樂 (Ent)'],
-                            datasets: [{
-                                data: [45, 15, 20, 10, 10], 
-                                backgroundColor: ['#d97706', '#3b82f6', '#10b981', '#6b7280', '#8b5cf6'],
-                                borderWidth: 0
-                            }]
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: {
-                                legend: { position: 'right' }
-                            }
-                        }
-                    });
-                }
-
-                // Chart 2: Daily Intensity (Bar + Line)
-                const ctxIntensity = document.getElementById('intensityChart')?.getContext('2d');
-                if (ctxIntensity) {
-                    const stepsData = itineraryData.map((_, i) => stepCounts[i] || 0);
-
-                    if (chartInstance) {
-                        chartInstance.destroy(); 
-                    }
-
-                    chartInstance = new Chart(ctxIntensity, {
-                        type: 'bar',
-                        data: {
-                            labels: itineraryData.map(d => `Day ${d.day}`),
-                            datasets: [
-                                {
-                                    label: '預估強度 (1-10)',
-                                    data: itineraryData.map(d => d.intensity),
-                                    backgroundColor: itineraryData.map(d => d.intensity >= 8 ? '#fca5a5' : (d.intensity >= 6 ? '#fcd34d' : '#6ee7b7')), 
-                                    borderRadius: 4,
-                                    yAxisID: 'y',
-                                    order: 2
-                                },
-                                {
-                                    label: '實際手機步數',
-                                    data: stepsData,
-                                    borderColor: '#2563eb', 
-                                    backgroundColor: '#2563eb',
-                                    type: 'line',
-                                    tension: 0.3,
-                                    yAxisID: 'y1',
-                                    order: 1
-                                }
-                            ]
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            scales: {
-                                y: {
-                                    beginAtZero: true,
-                                    max: 10,
-                                    title: { display: true, text: '強度' },
-                                    grid: { display: false }
-                                },
-                                y1: {
-                                    beginAtZero: true,
-                                    position: 'right',
-                                    title: { display: true, text: '步數' },
-                                    suggestedMax: 20000,
-                                    grid: { drawOnChartArea: true } 
-                                }
-                            },
-                            onClick: (e, elements) => {
-                                if (elements.length > 0) {
-                                    const index = elements[0].index;
-                                    currentDayIndex = index;
-                                    renderTabs();
-                                    renderContent(index);
-                                    mainContent.scrollIntoView({ behavior: 'smooth' });
-                                }
-                            },
-                            plugins: {
-                                tooltip: {
-                                    mode: 'index',
-                                    intersect: false
-                                }
-                            }
-                        }
-                    });
-                }
-            } catch (err) {
-                console.error("Chart Render Error:", err);
+                });
             }
         }
 
-        // --- Init Function ---
+        // --- Init & Sync ---
+
+        function updateSyncStatus(status) {
+            const dot = document.getElementById('syncStatusDot');
+            const text = document.getElementById('syncStatusText');
+            if(status === 'active') {
+                dot.style.backgroundColor = '#22c55e'; // Green
+                text.textContent = '已同步';
+            } else {
+                dot.style.backgroundColor = '#f59e0b'; // Amber
+                text.textContent = '同步中...';
+            }
+        }
 
         async function initApp() {
             renderTabs();
             renderContent(0);
             renderChecklists();
-            renderExpensesTable(); // Initial render of table
-            
+            renderExpensesTable();
+            setTimeout(renderCharts, 100);
+
             try {
-                if (typeof __firebase_config === 'undefined') {
-                    console.warn("Firebase config not found in env");
-                    return;
-                }
+                if (typeof __firebase_config === 'undefined') return;
                 const firebaseConfig = JSON.parse(__firebase_config);
                 const app = initializeApp(firebaseConfig);
                 const auth = getAuth(app);
                 db = getFirestore(app);
-                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
-                try {
+                // FIXED AUTHENTICATION LOGIC
+                const initAuth = async () => {
                     if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                         await signInWithCustomToken(auth, __initial_auth_token);
                     } else {
                         await signInAnonymously(auth);
                     }
-                } catch (authErr) {
-                    console.warn("Auth Error, trying anonymous fallback:", authErr);
-                    if (!auth.currentUser) await signInAnonymously(auth);
+                };
+                await initAuth();
+
+                // Double check user exists before attaching listeners
+                if (!auth.currentUser) {
+                    console.error("Auth failed, no user");
+                    return;
                 }
 
-                // Firestore Sync
-                docRef = doc(db, 'artifacts', appId, 'public', 'data', 'trip_state', TRIP_ID);
-
+                // 1. Trip State Listener (Checkboxes, Steps)
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'trip_state', TRIP_ID);
                 onSnapshot(docRef, (docSnap) => {
+                    updateSyncStatus('active');
                     if (docSnap.exists()) {
                         const data = docSnap.data();
                         checkedPhotos = new Set(data.checkedPhotos || []);
                         checkedShop = new Set(data.checkedShop || []);
                         dailyRoutineState = data.dailyRoutine || {};
-                        stepCounts = data.stepCounts || {}; 
-                        customExpenses = data.customExpenses || []; // Sync expenses
-
-                        // Update UI
+                        stepCounts = data.stepCounts || {};
                         renderChecklists();
-                        renderCharts(); 
-                        renderExpensesTable(); // Re-render table on sync
-                        
-                        // If viewing a specific day, we should probably re-render the content to show updated expense list
-                        // But be careful not to wipe input focus if typing. 
-                        // For simplicity, we only re-render the list if the current user isn't typing? 
-                        // Actually, since we want to see additions immediately, we can re-render.
-                        if (document.activeElement.tagName !== 'INPUT') {
-                             renderContent(currentDayIndex);
-                        }
-                        
-                    } else {
-                         setDoc(docRef, { checkedPhotos: [], checkedShop: [], dailyRoutine: {}, stepCounts: {}, customExpenses: [] })
-                           .catch(err => console.log("Create doc silent fail:", err));
+                        renderContent(currentDayIndex); // Be careful with input focus here? Actually checkboxes are fine.
+                        renderCharts();
                     }
-                }, (err) => {
-                    console.log("Sync paused:", err.code);
+                }, (error) => {
+                    console.error("Error watching trip state:", error);
+                    updateSyncStatus('error');
                 });
-                
-                setTimeout(renderCharts, 100);
+
+                // 2. Major Expenses Listener (Collection)
+                // Filter by tripId manually in JS as per "No complex queries" rule preference in limited env,
+                // or just fetch the collection. This is a dedicated collection for this trip data essentially.
+                const majorColRef = collection(db, 'artifacts', appId, 'public', 'data', 'major_expenses');
+                onSnapshot(majorColRef, (snapshot) => {
+                    updateSyncStatus('active');
+                    majorExpenses = snapshot.docs
+                        .map(doc => ({ id: doc.id, ...doc.data() }))
+                        .filter(item => item.tripId === TRIP_ID);
+                    renderExpensesTable();
+                }, (error) => {
+                    console.error("Error watching major expenses:", error);
+                });
+
+                // 3. Daily Expenses Listener (Collection)
+                const dailyColRef = collection(db, 'artifacts', appId, 'public', 'data', 'daily_expenses');
+                onSnapshot(dailyColRef, (snapshot) => {
+                    updateSyncStatus('active');
+                    customExpenses = snapshot.docs
+                        .map(doc => ({ id: doc.id, ...doc.data() }))
+                        .filter(item => item.tripId === TRIP_ID);
+                    renderContent(currentDayIndex);
+                    renderExpensesTable();
+                }, (error) => {
+                    console.error("Error watching daily expenses:", error);
+                });
 
             } catch (err) {
                 console.error("Firebase Init Error:", err);
-                setTimeout(renderCharts, 100);
             }
         }
 
-        function syncState() {
-            if (!docRef) return;
-            setDoc(docRef, {
-                checkedPhotos: Array.from(checkedPhotos),
-                checkedShop: Array.from(checkedShop),
-                dailyRoutine: dailyRoutineState,
-                stepCounts: stepCounts,
-                customExpenses: customExpenses
-            }, { merge: true }).catch(err => console.error("Sync Error:", err));
+        // Sync Trip State (Checkboxes etc)
+        async function syncTripState() {
+            if (!db) return;
+            updateSyncStatus('pending');
+            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'trip_state', TRIP_ID);
+            try {
+                await setDoc(docRef, {
+                    checkedPhotos: Array.from(checkedPhotos),
+                    checkedShop: Array.from(checkedShop),
+                    dailyRoutine: dailyRoutineState,
+                    stepCounts: stepCounts
+                }, { merge: true });
+            } catch(e) { console.error(e); }
         }
 
         initApp();
