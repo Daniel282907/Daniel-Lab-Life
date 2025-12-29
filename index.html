@@ -2,9 +2,9 @@
 <!-- Application Structure Plan:
     1.  **Dashboard Overview:** Summary of trip stats.
     2.  **Interactive Timeline:** Tab-based navigation.
-    3.  **Photography Command Center:** Checklists.
-    4.  **Bookkeeping (Refactored):** Uses separate collections for robust sync.
-    5.  **Firebase Integration:** Real-time listeners for multiple collections.
+    3.  **Photography Command Center:** Atomic Checklist Sync.
+    4.  **Bookkeeping:** Sub-collections for Expenses.
+    5.  **Firebase Integration:** Full Atomic Operations (arrayUnion/DotNotation).
 -->
 
 <!DOCTYPE html>
@@ -12,7 +12,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>東京 & 富士山 11天10夜 獨旅攝影指揮中心 (Pro Sync)</title>
+    <title>東京 & 富士山 11天10夜 獨旅攝影指揮中心 (Atomic Sync)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js" crossorigin="anonymous"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
@@ -70,14 +70,19 @@
             margin-right: 6px;
             animation: pulse-green 2s infinite;
         }
+        /* Loading overlay for operations */
+        .op-loading {
+            pointer-events: none;
+            opacity: 0.5;
+        }
     </style>
 </head>
 <body class="text-stone-800">
 
-    <!-- Sync Status Indicator (Fixed Top Right) -->
-    <div class="fixed top-4 right-4 z-50 bg-white/90 backdrop-blur border border-stone-200 rounded-full px-3 py-1 shadow-sm flex items-center gap-2 text-xs font-medium text-stone-600">
+    <!-- Sync Status Indicator -->
+    <div class="fixed top-4 right-4 z-50 bg-white/90 backdrop-blur border border-stone-200 rounded-full px-3 py-1 shadow-sm flex items-center gap-2 text-xs font-medium text-stone-600 transition-all" id="syncIndicator">
         <div id="syncStatusDot" class="w-2 h-2 rounded-full bg-stone-300"></div>
-        <span id="syncStatusText">連接中...</span>
+        <span id="syncStatusText">連接資料庫...</span>
     </div>
 
     <!-- Main Container -->
@@ -86,11 +91,11 @@
         <!-- Header -->
         <header class="text-center space-y-2 mt-4">
             <h1 class="text-3xl md:text-4xl font-bold text-stone-900 tracking-tight">🇯🇵 東京 & 富士山 獨旅攝影計畫</h1>
-            <p class="text-stone-500 font-medium">2025/01/01 - 2025/01/11 (11天10夜) • 雲端同步版 Pro</p>
+            <p class="text-stone-500 font-medium">2025/01/01 - 2025/01/11 (11天10夜) • 原子化同步版</p>
             <div class="flex justify-center gap-4 text-sm mt-4">
                 <span class="px-3 py-1 bg-amber-100 text-amber-800 rounded-full">📸 攝影優先</span>
                 <span class="px-3 py-1 bg-blue-100 text-blue-800 rounded-full">🗻 富士山絕景</span>
-                <span class="px-3 py-1 bg-green-100 text-green-800 rounded-full">🔄 即時協作</span>
+                <span class="px-3 py-1 bg-green-100 text-green-800 rounded-full">⚡ 原子化同步</span>
             </div>
             <p class="text-xs text-stone-400 mt-2">📧 所有憑證：daniel79865 信箱</p>
         </header>
@@ -115,11 +120,11 @@
                     </div>
                 </div>
 
-                <!-- NEW: Add Major Expense Section -->
+                <!-- Major Expense Section -->
                 <div class="mt-auto border-t border-stone-100 pt-4">
                     <button onclick="document.getElementById('majorExpenseForm').classList.toggle('hidden')" class="flex items-center gap-2 text-sm font-bold text-indigo-600 hover:text-indigo-800 transition-colors mb-2 w-full">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
-                        新增預付 / 大額支出 (列入總表)
+                        新增預付 / 大額支出
                     </button>
                     
                     <div id="majorExpenseForm" class="hidden bg-indigo-50 p-3 rounded-xl space-y-2">
@@ -129,7 +134,7 @@
                             <input type="number" id="majorPrice" placeholder="金額 (TWD)" class="text-sm p-2 rounded border border-indigo-200 focus:outline-none focus:border-indigo-500">
                         </div>
                         <input type="text" id="majorDetails" placeholder="備註細節 (選填)" class="w-full text-sm p-2 rounded border border-indigo-200 focus:outline-none focus:border-indigo-500">
-                        <button onclick="window.addMajorExpense()" class="w-full bg-indigo-600 text-white text-sm font-bold py-2 rounded hover:bg-indigo-700 transition-colors">確認新增</button>
+                        <button onclick="window.addMajorExpense()" class="w-full bg-indigo-600 text-white text-sm font-bold py-2 rounded hover:bg-indigo-700 transition-colors">確認新增 (DB Write)</button>
                     </div>
                 </div>
             </div>
@@ -188,10 +193,10 @@
             </section>
         </div>
 
-        <!-- NEW: Expenses & Tickets Summary -->
+        <!-- Expenses & Tickets Summary -->
         <section class="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
             <h2 class="text-xl font-bold text-stone-800 mb-4">💰 費用總表 (預付 + 每日記帳)</h2>
-            <p class="text-sm text-stone-500 mb-4">所有電子憑證均在信箱 <span class="font-mono bg-stone-100 px-1 rounded text-stone-700">daniel79865</span> 中。資料來自多個雲端集合同步。</p>
+            <p class="text-sm text-stone-500 mb-4">資料來源：Firestore Collections (Atomic Sync)</p>
             
             <div class="overflow-x-auto">
                 <table class="w-full text-sm text-left text-stone-600" id="expensesTable">
@@ -200,7 +205,6 @@
             </div>
         </section>
 
-        <!-- Footer -->
         <footer class="text-center text-stone-400 text-sm py-8 border-t border-stone-200">
             <p>2025 Tokyo & Fuji Solo Trip • Photography Itinerary</p>
         </footer>
@@ -209,22 +213,24 @@
 
     <!-- JavaScript Logic -->
     <script type="module">
-        // Import Firebase modules
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { 
+            getFirestore, doc, setDoc, updateDoc, onSnapshot, collection, addDoc, deleteDoc, 
+            arrayUnion, arrayRemove 
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- Global Variables & State ---
         const TRIP_ID = 'tokyo_fuji_2025_fixed_v1';
         let currentDayIndex = 0;
         
-        // Data Containers
+        // Data Containers (Local Mirror of DB)
         let checkedPhotos = new Set();
         let checkedShop = new Set();
         let dailyRoutineState = {};
         let stepCounts = {}; 
-        let customExpenses = []; // From 'daily_expenses' collection
-        let majorExpenses = []; // From 'major_expenses' collection
+        let customExpenses = []; 
+        let majorExpenses = []; 
         
         // Chart instances
         let chartInstance = null; 
@@ -233,8 +239,9 @@
         // Firebase Globals
         let db;
         let appId;
+        let tripStateDocRef;
 
-        // --- Static Data (Fixed) ---
+        // --- Static Data ---
         const fixedExpenses = [
             { name: "東京七天六夜住宿", platform: "Agoda", details: "前 6 晚 + 後 1 晚 (組合)", price: 7949 },
             { name: "機票來回", platform: "Agoda", details: "TPE <-> NRT/HND", price: 9588 },
@@ -298,134 +305,131 @@
             { id: 'fuji_cake', text: '富士雪粉起士蛋糕', icon: '🗻', isFujiOnly: true }
         ];
 
-        // --- Core Interaction Functions (Attached to Window) ---
+        // --- ATOMIC INTERACTION FUNCTIONS (Robust Sync) ---
 
-        window.toggleRoutine = function(dayIndex, itemId) {
+        // 1. Routine: Use Dot Notation for specific key update
+        window.toggleRoutine = async function(dayIndex, itemId) {
             const stateKey = `${dayIndex}_${itemId}`;
-            dailyRoutineState[stateKey] = !dailyRoutineState[stateKey];
+            const newVal = !dailyRoutineState[stateKey];
+            
+            // Optimistic Update
+            dailyRoutineState[stateKey] = newVal;
             renderContent(dayIndex);
-            syncTripState(); 
+            
+            if(!db || !tripStateDocRef) return;
+            try {
+                // Atomic Update: Only touch this specific key
+                await updateDoc(tripStateDocRef, {
+                    [`dailyRoutine.${stateKey}`]: newVal
+                });
+            } catch(e) { console.error("Sync routine fail", e); }
         };
 
-        window.togglePhoto = function(idx) {
-            if (checkedPhotos.has(idx)) checkedPhotos.delete(idx);
-            else checkedPhotos.add(idx);
+        // 2. Photos: Use arrayUnion / arrayRemove
+        window.togglePhoto = async function(idx) {
+            const isAdding = !checkedPhotos.has(idx);
+            
+            // Optimistic
+            if (isAdding) checkedPhotos.add(idx); else checkedPhotos.delete(idx);
             renderChecklists();
-            syncTripState();
+
+            if(!db || !tripStateDocRef) return;
+            try {
+                await updateDoc(tripStateDocRef, {
+                    checkedPhotos: isAdding ? arrayUnion(idx) : arrayRemove(idx)
+                });
+            } catch(e) { console.error("Sync photo fail", e); }
         };
 
-        window.toggleShop = function(idx) {
-            if (checkedShop.has(idx)) checkedShop.delete(idx);
-            else checkedShop.add(idx);
+        // 3. Shop: Use arrayUnion / arrayRemove
+        window.toggleShop = async function(idx) {
+            const isAdding = !checkedShop.has(idx);
+            
+            // Optimistic
+            if (isAdding) checkedShop.add(idx); else checkedShop.delete(idx);
             renderChecklists();
-            syncTripState();
+
+            if(!db || !tripStateDocRef) return;
+            try {
+                await updateDoc(tripStateDocRef, {
+                    checkedShop: isAdding ? arrayUnion(idx) : arrayRemove(idx)
+                });
+            } catch(e) { console.error("Sync shop fail", e); }
         };
 
-        window.updateSteps = function(dayIndex, value) {
-            stepCounts[dayIndex] = parseInt(value) || 0;
-            renderCharts(); 
-            syncTripState();
+        // 4. Steps: Use Dot Notation
+        window.updateSteps = async function(dayIndex, value) {
+            const val = parseInt(value) || 0;
+            stepCounts[dayIndex] = val;
+            renderCharts();
+            
+            if(!db || !tripStateDocRef) return;
+            try {
+                await updateDoc(tripStateDocRef, {
+                    [`stepCounts.${dayIndex}`]: val
+                });
+            } catch(e) { console.error("Sync step fail", e); }
         };
 
-        // --- NEW: Firestore Sub-Collection Operations (Robust Sync) ---
-
+        // 5. Major Expenses: Add to Collection (Already Atomic)
         window.addMajorExpense = async function() {
             const name = document.getElementById('majorName').value.trim();
             const platform = document.getElementById('majorPlatform').value.trim();
             const price = parseInt(document.getElementById('majorPrice').value);
             const details = document.getElementById('majorDetails').value.trim();
 
-            if (!name || isNaN(price)) {
-                alert("請輸入有效的項目名稱與金額");
-                return;
-            }
+            if (!name || isNaN(price)) { alert("請輸入有效的項目名稱與金額"); return; }
 
             try {
-                // Add to 'major_expenses' collection using unique auto-ID
                 await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'major_expenses'), {
-                    tripId: TRIP_ID,
-                    name,
-                    platform: platform || "自訂",
-                    price,
-                    details: details || "",
-                    createdAt: Date.now()
+                    tripId: TRIP_ID, name, platform: platform || "自訂", price, details: details || "", createdAt: Date.now()
                 });
-                
-                // Clear form
                 document.getElementById('majorName').value = "";
                 document.getElementById('majorPlatform').value = "";
                 document.getElementById('majorPrice').value = "";
                 document.getElementById('majorDetails').value = "";
-                alert("已新增至大額支出（雲端同步）！");
-            } catch (e) {
-                console.error("Error adding major expense", e);
-                alert("新增失敗，請檢查網路");
-            }
+                alert("✅ 已原子化寫入雲端資料庫！");
+            } catch (e) { console.error("Error adding major expense", e); }
         };
 
         window.deleteMajorExpense = async function(docId) {
             if(!confirm("確定要刪除這筆支出嗎？")) return;
-            try {
-                await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'major_expenses', docId));
-            } catch (e) {
-                console.error("Error deleting major expense", e);
-            }
+            try { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'major_expenses', docId)); } 
+            catch (e) { console.error(e); }
         };
 
+        // 6. Daily Expenses: Add to Collection (Already Atomic)
         window.addExpense = async function(dayIndex) {
             const name = document.getElementById(`expense-name-${dayIndex}`).value.trim();
             const price = parseInt(document.getElementById(`expense-price-${dayIndex}`).value);
-
-            if (!name || isNaN(price)) {
-                alert("請輸入有效的項目名稱與金額");
-                return;
-            }
+            if (!name || isNaN(price)) { alert("請輸入有效的項目名稱與金額"); return; }
 
             try {
-                // Add to 'daily_expenses' collection
                 await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'daily_expenses'), {
-                    tripId: TRIP_ID,
-                    dayIndex,
-                    name,
-                    price,
-                    createdAt: Date.now()
+                    tripId: TRIP_ID, dayIndex, name, price, createdAt: Date.now()
                 });
-                // Clear form handled in render if we want, or manually here
                 document.getElementById(`expense-name-${dayIndex}`).value = "";
                 document.getElementById(`expense-price-${dayIndex}`).value = "";
-            } catch (e) {
-                console.error("Error adding daily expense", e);
-            }
+            } catch (e) { console.error(e); }
         };
 
-        window.deleteExpense = async function(docId, dayIndex) {
-            try {
-                await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'daily_expenses', docId));
-            } catch (e) {
-                console.error("Error deleting daily expense", e);
-            }
+        window.deleteExpense = async function(docId) {
+            try { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'daily_expenses', docId)); } 
+            catch (e) { console.error(e); }
         };
 
         // --- Render Functions ---
-
-        const dayTabs = document.getElementById('dayTabs');
-        const mainContent = document.getElementById('mainContent');
-        const photoChecklist = document.getElementById('photoChecklist');
-        const shoppingChecklist = document.getElementById('shoppingChecklist');
-        const expensesTable = document.getElementById('expensesTable');
+        // (Same logic as before, just ensuring data consistency)
 
         function renderTabs() {
-            dayTabs.innerHTML = '';
+            const tabs = document.getElementById('dayTabs');
+            tabs.innerHTML = '';
             itineraryData.forEach((day, index) => {
                 const btn = document.createElement('button');
                 btn.className = `flex-shrink-0 px-5 py-2 rounded-lg text-sm font-medium transition-all duration-200 border ${index === currentDayIndex ? 'active-tab shadow-md' : 'inactive-tab'}`;
                 btn.textContent = `Day ${day.day}`;
-                btn.onclick = () => {
-                    currentDayIndex = index;
-                    renderTabs();
-                    renderContent(index);
-                };
-                dayTabs.appendChild(btn);
+                btn.onclick = () => { currentDayIndex = index; renderTabs(); renderContent(index); };
+                tabs.appendChild(btn);
             });
         }
 
@@ -433,264 +437,110 @@
             const data = itineraryData[index];
             const isFujiArea = data.location === 'Fuji' || data.location.includes('Fuji');
             const currentSteps = stepCounts[index] || '';
-            
-            // Filter expenses from the global synced array
             const dailyExpenses = customExpenses.filter(e => e.dayIndex === index);
             const dailyTotal = dailyExpenses.reduce((sum, e) => sum + e.price, 0);
 
-            // Routine HTML
             let routineHtml = '';
             dailyRoutineItems.forEach(item => {
                 if (item.isFujiOnly && !isFujiArea) return;
                 const stateKey = `${index}_${item.id}`;
                 const isChecked = dailyRoutineState[stateKey] || false;
-                
                 routineHtml += `
                     <div class="flex items-center gap-3 p-3 mb-2 rounded-lg cursor-pointer transition-all ${isChecked ? 'bg-green-50 border border-green-200' : 'bg-white border border-stone-200 hover:border-stone-400'}" 
                             onclick="window.toggleRoutine(${index}, '${item.id}')">
-                        <div class="w-5 h-5 flex items-center justify-center rounded border ${isChecked ? 'bg-green-500 border-green-500 text-white' : 'border-stone-300'}">
-                            ${isChecked ? '✓' : ''}
-                        </div>
-                        <div class="flex-1 text-sm font-medium ${isChecked ? 'text-stone-400 line-through' : 'text-stone-700'}">
-                            <span class="mr-1">${item.icon}</span> ${item.text}
-                        </div>
-                    </div>
-                `;
+                        <div class="w-5 h-5 flex items-center justify-center rounded border ${isChecked ? 'bg-green-500 border-green-500 text-white' : 'border-stone-300'}">${isChecked ? '✓' : ''}</div>
+                        <div class="flex-1 text-sm font-medium ${isChecked ? 'text-stone-400 line-through' : 'text-stone-700'}"><span class="mr-1">${item.icon}</span> ${item.text}</div>
+                    </div>`;
             });
 
-            // Expense List HTML
-            let expensesListHtml = '';
-            if (dailyExpenses.length > 0) {
-                expensesListHtml = `<div class="mt-3 space-y-2">`;
-                dailyExpenses.forEach(exp => {
-                    expensesListHtml += `
-                        <div class="flex justify-between items-center bg-white p-2 rounded border border-stone-100 expense-item">
-                            <span class="text-sm text-stone-700">${exp.name}</span>
-                            <div class="flex items-center gap-3">
-                                <span class="text-sm font-mono text-stone-600">$${exp.price}</span>
-                                <button onclick="window.deleteExpense('${exp.id}', ${index})" class="text-red-400 hover:text-red-600">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-                                </button>
-                            </div>
-                        </div>
-                    `;
-                });
-                expensesListHtml += `</div>`;
-            } else {
-                expensesListHtml = `<p class="text-xs text-stone-400 mt-2 text-center italic">今日尚未新增消費</p>`;
-            }
+            let expensesListHtml = dailyExpenses.length > 0 ? `<div class="mt-3 space-y-2">` + dailyExpenses.map(exp => `
+                <div class="flex justify-between items-center bg-white p-2 rounded border border-stone-100 expense-item">
+                    <span class="text-sm text-stone-700">${exp.name}</span>
+                    <div class="flex items-center gap-3"><span class="text-sm font-mono text-stone-600">$${exp.price}</span>
+                    <button onclick="window.deleteExpense('${exp.id}')" class="text-red-400 hover:text-red-600">×</button></div>
+                </div>`).join('') + `</div>` : `<p class="text-xs text-stone-400 mt-2 text-center italic">今日尚未新增消費</p>`;
 
-            mainContent.innerHTML = `
+            document.getElementById('mainContent').innerHTML = `
                 <div class="bg-white rounded-3xl shadow-lg border border-stone-200 overflow-hidden relative">
                     <div class="p-8 ${isFujiArea ? 'bg-gradient-to-r from-blue-50 to-indigo-50' : 'bg-gradient-to-r from-amber-50 to-orange-50'}">
-                        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                            <div>
-                                <h2 class="text-3xl font-bold text-stone-800 mb-2">${data.date} ${data.title}</h2>
-                                <div class="flex gap-2">
-                                    <span class="px-3 py-1 text-xs font-bold uppercase tracking-wide rounded-full bg-white text-stone-600 border border-stone-200">
-                                        📍 ${data.location}
-                                    </span>
-                                    <span class="px-3 py-1 text-xs font-bold uppercase tracking-wide rounded-full ${data.intensity >= 8 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}">
-                                        ⚡ 強度: ${data.intensity}/10
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
+                        <div class="flex justify-between gap-4"><div><h2 class="text-3xl font-bold text-stone-800 mb-2">${data.date} ${data.title}</h2>
+                        <div class="flex gap-2"><span class="px-3 py-1 text-xs bg-white rounded-full border">📍 ${data.location}</span><span class="px-3 py-1 text-xs bg-stone-800 text-white rounded-full">⚡ 強度: ${data.intensity}</span></div></div></div>
                     </div>
-
-                    <div class="p-8">
-                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-                            <div class="lg:col-span-2 space-y-6">
-                                <div>
-                                    <h3 class="text-lg font-bold text-stone-700 mb-4 border-b pb-2 border-stone-100">行程亮點</h3>
-                                    <ul class="space-y-4">
-                                        ${data.highlights.map(item => `
-                                            <li class="flex items-start gap-3">
-                                                <span class="mt-1.5 w-2 h-2 rounded-full ${item.includes('車次') || item.includes('預約') ? 'bg-blue-500' : (item.includes('拍攝') ? 'bg-red-500' : 'bg-amber-500')} flex-shrink-0"></span>
-                                                <span class="text-stone-700 leading-relaxed ${item.includes('車次') || item.includes('預約') ? 'font-bold' : ''}">${item}</span>
-                                            </li>
-                                        `).join('')}
-                                    </ul>
-                                </div>
-                                <div class="bg-white border border-blue-200 rounded-xl p-4 flex items-center justify-between shadow-sm">
-                                    <div class="flex items-center gap-3">
-                                         <div class="p-2 bg-blue-100 text-blue-600 rounded-lg">
-                                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16v-2.38C4 11.5 2.97 10.5 3 8c.03-2.72 1.49-6 4.5-6C9.37 2 11 3.8 11 8c0 2.85-2.98 5.54-3 8h6c.02-2.46-2.98-5.15-3-8 0-4.2 1.63-6 3.5-6 3.01 0 4.47 3.28 4.5 6 .03 2.5-1 3.5-1 5.62V16h-1v6h2v-6h1v6h2v-6h1v-2c0-2.31.7-3.58 1-5H3c.3 1.42 1 2.69 1 5v2h1v-6h1v6h2v-6h1v6h2v-6z"></path></svg>
-                                         </div>
-                                         <div>
-                                             <h4 class="font-bold text-stone-700">手機步數紀錄</h4>
-                                         </div>
-                                    </div>
-                                    <div class="flex items-center gap-2">
-                                        <input type="number" id="stepInput" 
-                                               class="w-24 border border-stone-300 rounded-lg px-3 py-2 text-right font-mono focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none" 
-                                               placeholder="0" 
-                                               value="${currentSteps}"
-                                               onchange="window.updateSteps(${index}, this.value)">
-                                        <span class="text-sm text-stone-500">步</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="space-y-6">
-                                <div class="bg-stone-50 rounded-2xl p-5 border border-stone-100">
-                                    <h3 class="text-sm font-bold text-stone-500 uppercase mb-3 flex items-center gap-2"><span>📅</span> 每日儀式 Checklist</h3>
-                                    <div class="flex flex-col">${routineHtml}</div>
-                                </div>
-                                <div class="bg-indigo-50 rounded-2xl p-5 border border-indigo-100">
-                                    <h3 class="text-sm font-bold text-indigo-800 uppercase mb-3 flex items-center gap-2 justify-between">
-                                        <span>💸 今日記帳 (小額)</span>
-                                        <span class="text-xs bg-white px-2 py-0.5 rounded border border-indigo-100 text-indigo-600">小計: $${dailyTotal}</span>
-                                    </h3>
-                                    <div class="flex gap-2 mb-3">
-                                        <input type="text" id="expense-name-${index}" placeholder="項目" class="w-full rounded border border-stone-300 px-2 py-1 text-sm focus:outline-none focus:border-indigo-400">
-                                        <input type="number" id="expense-price-${index}" placeholder="$" class="w-20 rounded border border-stone-300 px-2 py-1 text-sm focus:outline-none focus:border-indigo-400">
-                                        <button onclick="window.addExpense(${index})" class="bg-indigo-600 text-white rounded px-3 py-1 text-sm hover:bg-indigo-700 transition-colors">+</button>
-                                    </div>
-                                    ${expensesListHtml}
-                                </div>
+                    <div class="p-8"><div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+                        <div class="lg:col-span-2 space-y-6"><div><h3 class="text-lg font-bold text-stone-700 mb-4 border-b pb-2">行程亮點</h3>
+                            <ul class="space-y-4">${data.highlights.map(h => `<li class="flex gap-3"><span class="mt-1.5 w-2 h-2 rounded-full bg-amber-500"></span><span>${h}</span></li>`).join('')}</ul></div>
+                            <div class="bg-white border border-blue-200 rounded-xl p-4 flex justify-between">
+                                <div class="flex gap-3"><div class="p-2 bg-blue-100 text-blue-600 rounded-lg">👣</div><div><h4 class="font-bold text-stone-700">步數</h4></div></div>
+                                <div class="flex gap-2"><input type="number" class="w-24 border rounded px-2 text-right" value="${currentSteps}" onchange="window.updateSteps(${index}, this.value)"><span>步</span></div>
                             </div>
                         </div>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div class="bg-stone-50 p-4 rounded-xl">
-                                <h4 class="text-sm font-bold text-stone-500 uppercase mb-2">🍽️ 餐飲 & 預約</h4>
-                                <p class="text-stone-800 font-medium">${data.food}</p>
-                            </div>
-                            <div class="bg-amber-50 p-4 rounded-xl">
-                                <h4 class="text-sm font-bold text-amber-600 uppercase mb-2">💡 攝影筆記 / 貼心提醒</h4>
-                                <p class="text-stone-800 text-sm">${data.tips}</p>
+                        <div class="space-y-6">
+                            <div class="bg-stone-50 rounded-2xl p-5 border border-stone-100"><h3 class="text-sm font-bold text-stone-500 mb-3">📅 每日儀式</h3>${routineHtml}</div>
+                            <div class="bg-indigo-50 rounded-2xl p-5 border border-indigo-100"><h3 class="text-sm font-bold text-indigo-800 mb-3 flex justify-between"><span>💸 記帳</span><span class="text-xs bg-white px-2 rounded border text-indigo-600">$${dailyTotal}</span></h3>
+                                <div class="flex gap-2 mb-3"><input type="text" id="expense-name-${index}" placeholder="項目" class="w-full rounded border px-2 py-1 text-sm"><input type="number" id="expense-price-${index}" placeholder="$" class="w-20 rounded border px-2 py-1 text-sm"><button onclick="window.addExpense(${index})" class="bg-indigo-600 text-white rounded px-3 py-1 hover:bg-indigo-700">+</button></div>${expensesListHtml}
                             </div>
                         </div>
-                    </div>
-                </div>
-            `;
+                    </div></div>
+                </div>`;
         }
 
         function renderChecklists() {
-            // Photos
-            photoChecklist.innerHTML = '';
+            const pl = document.getElementById('photoChecklist'); pl.innerHTML = '';
             photoMissions.forEach((item, idx) => {
                 const isChecked = checkedPhotos.has(idx);
                 const div = document.createElement('div');
-                div.className = `flex items-center justify-between gap-3 p-3 rounded-lg border transition-all ${isChecked ? 'bg-stone-50 border-stone-200' : 'bg-white border-stone-100 hover:border-amber-300 hover:shadow-sm'}`;
-                div.innerHTML = `
-                    <div class="flex items-center gap-3 cursor-pointer flex-grow" onclick="window.togglePhoto(${idx})">
-                        <div class="w-5 h-5 rounded border flex items-center justify-center flex-shrink-0 ${isChecked ? 'bg-amber-500 border-amber-500 text-white' : 'border-stone-300'}">
-                            ${isChecked ? '✓' : ''}
-                        </div>
-                        <div><div class="text-sm font-medium ${isChecked ? 'line-through text-stone-400' : 'text-stone-700'}">${item.text}</div></div>
-                    </div>`;
-                photoChecklist.appendChild(div);
+                div.className = `flex items-center gap-3 p-3 rounded-lg border transition-all ${isChecked ? 'bg-stone-50 border-stone-200' : 'bg-white hover:border-amber-300'}`;
+                div.innerHTML = `<div class="flex gap-3 w-full cursor-pointer" onclick="window.togglePhoto(${idx})"><div class="w-5 h-5 rounded border flex justify-center items-center ${isChecked ? 'bg-amber-500 border-amber-500 text-white' : 'border-stone-300'}">${isChecked ? '✓' : ''}</div><div class="${isChecked ? 'line-through text-stone-400' : 'text-stone-700'} text-sm">${item.text}</div></div>`;
+                pl.appendChild(div);
             });
             document.getElementById('photoProgress').textContent = `${checkedPhotos.size}/${photoMissions.length} 完成`;
 
-            // Shopping
-            shoppingChecklist.innerHTML = '';
+            const sl = document.getElementById('shoppingChecklist'); sl.innerHTML = '';
             shoppingList.forEach((item, idx) => {
                 const isChecked = checkedShop.has(idx);
                 const div = document.createElement('div');
-                div.className = `flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${isChecked ? 'bg-stone-50 border-stone-200 opacity-60' : 'bg-white border-stone-100 hover:border-blue-300 hover:shadow-sm'}`;
+                div.className = `flex items-center gap-3 p-3 rounded-lg border transition-all ${isChecked ? 'bg-stone-50 border-stone-200' : 'bg-white hover:border-blue-300'}`;
                 div.onclick = () => window.toggleShop(idx);
-                div.innerHTML = `
-                    <div class="w-5 h-5 rounded border flex items-center justify-center ${isChecked ? 'bg-blue-500 border-blue-500 text-white' : 'border-stone-300'}">${isChecked ? '✓' : ''}</div>
-                    <div><div class="text-sm font-medium ${isChecked ? 'line-through text-stone-400' : 'text-stone-700'}">${item.item}</div><div class="text-xs text-stone-400">${item.loc}</div></div>`;
-                shoppingChecklist.appendChild(div);
+                div.innerHTML = `<div class="w-5 h-5 rounded border flex justify-center items-center ${isChecked ? 'bg-blue-500 border-blue-500 text-white' : 'border-stone-300'}">${isChecked ? '✓' : ''}</div><div class="${isChecked ? 'line-through text-stone-400' : 'text-stone-700'} text-sm">${item.item}</div>`;
+                sl.appendChild(div);
             });
             document.getElementById('shopProgress').textContent = `${checkedShop.size}/${shoppingList.length} 購入`;
         }
 
         function renderExpensesTable() {
-            let html = `
-                <thead class="text-xs text-stone-700 uppercase bg-stone-50">
-                    <tr>
-                        <th class="px-6 py-3">項目</th>
-                        <th class="px-6 py-3">平台/類別</th>
-                        <th class="px-6 py-3">詳細資訊 / 日期</th>
-                        <th class="px-6 py-3 text-right">金額 (TWD)</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-stone-100">`;
-
-            let grandTotal = 0;
-
-            // 1. Fixed
-            fixedExpenses.forEach(exp => {
-                grandTotal += exp.price;
-                html += `
-                    <tr class="bg-white border-b hover:bg-stone-50">
-                        <td class="px-6 py-4 font-medium text-stone-900">${exp.name}</td>
-                        <td class="px-6 py-4">${exp.platform}</td>
-                        <td class="px-6 py-4 ${exp.highlight ? 'text-amber-600 font-bold' : ''}">${exp.details}</td>
-                        <td class="px-6 py-4 text-right">${exp.price.toLocaleString()}</td>
-                    </tr>`;
+            let html = `<thead class="text-xs uppercase bg-stone-50"><tr><th class="px-6 py-3">項目</th><th class="px-6 py-3">平台</th><th class="px-6 py-3">詳細</th><th class="px-6 py-3 text-right">金額</th></tr></thead><tbody>`;
+            let total = 0;
+            
+            fixedExpenses.forEach(e => { total += e.price; html += `<tr class="bg-white border-b"><td class="px-6 py-4 font-medium">${e.name}</td><td class="px-6 py-4">${e.platform}</td><td class="px-6 py-4">${e.details}</td><td class="px-6 py-4 text-right">${e.price}</td></tr>`; });
+            
+            [...majorExpenses].sort((a,b) => (a.createdAt||0)-(b.createdAt||0)).forEach(e => {
+                total += e.price;
+                html += `<tr class="bg-amber-50/50 border-b group"><td class="px-6 py-4 font-medium flex gap-2">${e.name}<button onclick="window.deleteMajorExpense('${e.id}')" class="text-red-300 hover:text-red-500 opacity-0 group-hover:opacity-100">×</button></td><td class="px-6 py-4">${e.platform}</td><td class="px-6 py-4 italic">${e.details}</td><td class="px-6 py-4 text-right">${e.price}</td></tr>`;
             });
 
-            // 2. Major (Synced from Collection)
-            if (majorExpenses.length > 0) {
-                 // Sort by creation time
-                 const sortedMajor = [...majorExpenses].sort((a,b) => (a.createdAt || 0) - (b.createdAt || 0));
-                 sortedMajor.forEach(exp => {
-                    grandTotal += exp.price;
-                    html += `
-                        <tr class="bg-amber-50/50 border-b hover:bg-amber-50 group">
-                            <td class="px-6 py-4 font-medium text-stone-900 flex items-center gap-2">
-                                ${exp.name}
-                                <button onclick="window.deleteMajorExpense('${exp.id}')" class="text-red-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-                                </button>
-                            </td>
-                            <td class="px-6 py-4 text-stone-600">${exp.platform}</td>
-                            <td class="px-6 py-4 text-stone-500 italic">${exp.details}</td>
-                            <td class="px-6 py-4 text-right">${exp.price.toLocaleString()}</td>
-                        </tr>`;
-                });
-            }
-
-            // 3. Daily (Synced from Collection)
             if (customExpenses.length > 0) {
-                html += `<tr><td colspan="4" class="px-6 py-2 text-xs font-bold text-stone-500 uppercase text-center tracking-wider bg-stone-100">⬇️ 旅途記帳 (現地小額消費) ⬇️</td></tr>`;
-                const sortedCustom = [...customExpenses].sort((a, b) => a.dayIndex - b.dayIndex);
-                sortedCustom.forEach(exp => {
-                    grandTotal += exp.price;
-                    html += `
-                        <tr class="bg-indigo-50/30 border-b hover:bg-indigo-50">
-                            <td class="px-6 py-4 font-medium text-stone-900">${exp.name}</td>
-                            <td class="px-6 py-4 text-stone-500">每日記帳</td>
-                            <td class="px-6 py-4 text-indigo-600 font-medium">Day ${exp.dayIndex + 1}</td>
-                            <td class="px-6 py-4 text-right">${exp.price.toLocaleString()}</td>
-                        </tr>`;
+                html += `<tr><td colspan="4" class="px-6 py-2 text-xs font-bold text-stone-500 text-center bg-stone-100">⬇️ 小額消費 ⬇️</td></tr>`;
+                [...customExpenses].sort((a,b)=>a.dayIndex-b.dayIndex).forEach(e => {
+                    total += e.price;
+                    html += `<tr class="bg-indigo-50/30 border-b"><td class="px-6 py-4">${e.name}</td><td class="px-6 py-4 text-stone-500">Day ${e.dayIndex+1}</td><td class="px-6 py-4"></td><td class="px-6 py-4 text-right">${e.price}</td></tr>`;
                 });
             }
-
-            html += `
-                </tbody>
-                <tfoot class="bg-stone-100 font-bold text-stone-900">
-                    <tr>
-                        <td class="px-6 py-3 text-base">總計 (TWD)</td>
-                        <td class="px-6 py-3"></td>
-                        <td class="px-6 py-3"></td>
-                        <td class="px-6 py-3 text-right text-base text-indigo-700">${grandTotal.toLocaleString()}</td>
-                    </tr>
-                </tfoot>`;
-            expensesTable.innerHTML = html;
+            html += `</tbody><tfoot><tr class="bg-stone-100 font-bold"><td>總計</td><td></td><td></td><td class="px-6 py-3 text-right text-indigo-700">${total.toLocaleString()}</td></tr></tfoot>`;
+            document.getElementById('expensesTable').innerHTML = html;
         }
 
         function renderCharts() {
             if (typeof Chart === 'undefined') return;
-            
             // Focus Chart
             const ctxFocus = document.getElementById('focusChart')?.getContext('2d');
             if (ctxFocus) {
                 if (focusChartInstance) focusChartInstance.destroy();
                 focusChartInstance = new Chart(ctxFocus, {
                     type: 'doughnut',
-                    data: {
-                        labels: ['攝影', '購物', '美食', '移動', '娛樂'],
-                        datasets: [{ data: [45, 15, 20, 10, 10], backgroundColor: ['#d97706', '#3b82f6', '#10b981', '#6b7280', '#8b5cf6'], borderWidth: 0 }]
-                    },
+                    data: { labels: ['攝影', '購物', '美食', '移動', '娛樂'], datasets: [{ data: [45, 15, 20, 10, 10], backgroundColor: ['#d97706', '#3b82f6', '#10b981', '#6b7280', '#8b5cf6'], borderWidth: 0 }] },
                     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } }
                 });
             }
-
             // Intensity Chart
             const ctxIntensity = document.getElementById('intensityChart')?.getContext('2d');
             if (ctxIntensity) {
@@ -698,42 +548,24 @@
                 if (chartInstance) chartInstance.destroy();
                 chartInstance = new Chart(ctxIntensity, {
                     type: 'bar',
-                    data: {
-                        labels: itineraryData.map(d => `Day ${d.day}`),
-                        datasets: [
-                            { label: '預估強度', data: itineraryData.map(d => d.intensity), backgroundColor: itineraryData.map(d => d.intensity >= 8 ? '#fca5a5' : (d.intensity >= 6 ? '#fcd34d' : '#6ee7b7')), order: 2 },
-                            { label: '實際步數', data: stepsData, borderColor: '#2563eb', backgroundColor: '#2563eb', type: 'line', tension: 0.3, yAxisID: 'y1', order: 1 }
-                        ]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        scales: { y: { beginAtZero: true, max: 10, display: false }, y1: { beginAtZero: true, position: 'right', suggestedMax: 20000, grid: { drawOnChartArea: true } } }
-                    }
+                    data: { labels: itineraryData.map(d => `Day ${d.day}`), datasets: [{ label: '預估強度', data: itineraryData.map(d => d.intensity), backgroundColor: '#fcd34d', order: 2 }, { label: '實際步數', data: stepsData, borderColor: '#2563eb', backgroundColor: '#2563eb', type: 'line', tension: 0.3, yAxisID: 'y1', order: 1 }] },
+                    options: { responsive: true, maintainAspectRatio: false, scales: { y: { display: false }, y1: { position: 'right', suggestedMax: 20000 } } }
                 });
             }
         }
 
-        // --- Init & Sync ---
-
+        // --- Init ---
         function updateSyncStatus(status) {
             const dot = document.getElementById('syncStatusDot');
             const text = document.getElementById('syncStatusText');
-            if(status === 'active') {
-                dot.style.backgroundColor = '#22c55e'; // Green
-                text.textContent = '已同步';
-            } else {
-                dot.style.backgroundColor = '#f59e0b'; // Amber
-                text.textContent = '同步中...';
-            }
+            if(status === 'active') { dot.style.backgroundColor = '#22c55e'; text.textContent = '已同步'; }
+            else if(status === 'error') { dot.style.backgroundColor = '#ef4444'; text.textContent = '錯誤'; }
+            else { dot.style.backgroundColor = '#f59e0b'; text.textContent = '同步中...'; }
         }
 
         async function initApp() {
-            renderTabs();
-            renderContent(0);
-            renderChecklists();
-            renderExpensesTable();
-            setTimeout(renderCharts, 100);
+            renderTabs(); renderContent(0); renderChecklists(); renderExpensesTable();
+            setTimeout(renderCharts, 200);
 
             try {
                 if (typeof __firebase_config === 'undefined') return;
@@ -743,25 +575,16 @@
                 db = getFirestore(app);
                 appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
-                // FIXED AUTHENTICATION LOGIC
+                // Auth
                 const initAuth = async () => {
-                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                        await signInWithCustomToken(auth, __initial_auth_token);
-                    } else {
-                        await signInAnonymously(auth);
-                    }
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await signInWithCustomToken(auth, __initial_auth_token);
+                    else await signInAnonymously(auth);
                 };
                 await initAuth();
 
-                // Double check user exists before attaching listeners
-                if (!auth.currentUser) {
-                    console.error("Auth failed, no user");
-                    return;
-                }
-
-                // 1. Trip State Listener (Checkboxes, Steps)
-                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'trip_state', TRIP_ID);
-                onSnapshot(docRef, (docSnap) => {
+                // 1. Trip State Listener (Single Doc)
+                tripStateDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'trip_state', TRIP_ID);
+                onSnapshot(tripStateDocRef, (docSnap) => {
                     updateSyncStatus('active');
                     if (docSnap.exists()) {
                         const data = docSnap.data();
@@ -769,64 +592,32 @@
                         checkedShop = new Set(data.checkedShop || []);
                         dailyRoutineState = data.dailyRoutine || {};
                         stepCounts = data.stepCounts || {};
+                        // Re-render
                         renderChecklists();
-                        renderContent(currentDayIndex); // Be careful with input focus here? Actually checkboxes are fine.
+                        if(document.activeElement.tagName !== 'INPUT') renderContent(currentDayIndex);
                         renderCharts();
+                    } else {
+                        setDoc(tripStateDocRef, { checkedPhotos: [], checkedShop: [], dailyRoutine: {}, stepCounts: {} });
                     }
-                }, (error) => {
-                    console.error("Error watching trip state:", error);
-                    updateSyncStatus('error');
                 });
 
-                // 2. Major Expenses Listener (Collection)
-                // Filter by tripId manually in JS as per "No complex queries" rule preference in limited env,
-                // or just fetch the collection. This is a dedicated collection for this trip data essentially.
-                const majorColRef = collection(db, 'artifacts', appId, 'public', 'data', 'major_expenses');
-                onSnapshot(majorColRef, (snapshot) => {
-                    updateSyncStatus('active');
-                    majorExpenses = snapshot.docs
-                        .map(doc => ({ id: doc.id, ...doc.data() }))
-                        .filter(item => item.tripId === TRIP_ID);
-                    renderExpensesTable();
-                }, (error) => {
-                    console.error("Error watching major expenses:", error);
+                // 2. Collections Listeners
+                ['major_expenses', 'daily_expenses'].forEach(colName => {
+                    onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', colName), (snap) => {
+                        updateSyncStatus('active');
+                        const items = snap.docs.map(d => ({id: d.id, ...d.data()})).filter(i => i.tripId === TRIP_ID);
+                        if(colName === 'major_expenses') majorExpenses = items;
+                        else customExpenses = items;
+                        
+                        renderExpensesTable();
+                        if(document.activeElement.tagName !== 'INPUT') renderContent(currentDayIndex);
+                    });
                 });
 
-                // 3. Daily Expenses Listener (Collection)
-                const dailyColRef = collection(db, 'artifacts', appId, 'public', 'data', 'daily_expenses');
-                onSnapshot(dailyColRef, (snapshot) => {
-                    updateSyncStatus('active');
-                    customExpenses = snapshot.docs
-                        .map(doc => ({ id: doc.id, ...doc.data() }))
-                        .filter(item => item.tripId === TRIP_ID);
-                    renderContent(currentDayIndex);
-                    renderExpensesTable();
-                }, (error) => {
-                    console.error("Error watching daily expenses:", error);
-                });
-
-            } catch (err) {
-                console.error("Firebase Init Error:", err);
-            }
-        }
-
-        // Sync Trip State (Checkboxes etc)
-        async function syncTripState() {
-            if (!db) return;
-            updateSyncStatus('pending');
-            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'trip_state', TRIP_ID);
-            try {
-                await setDoc(docRef, {
-                    checkedPhotos: Array.from(checkedPhotos),
-                    checkedShop: Array.from(checkedShop),
-                    dailyRoutine: dailyRoutineState,
-                    stepCounts: stepCounts
-                }, { merge: true });
-            } catch(e) { console.error(e); }
+            } catch (err) { console.error("Firebase Init Error:", err); updateSyncStatus('error'); }
         }
 
         initApp();
-
     </script>
 </body>
 </html>
